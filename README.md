@@ -19,6 +19,10 @@ This opens http://localhost:8733 and follows your save by itself:
 - every slot and accessory shows a tick when it already matches the build
 - the upgrade list counts what you own (bag plus everything slotted) against what the party wants
 - the to-do list says where each missing quartz is: in your bag, on a benched character, or not owned
+- party status shows everyone's HP, EP, CP and gear as of the last save
+- party Arts shows who can cast what with the quartz slotted right now
+- status protection shows who resists what, and which spare accessory in the bag would cover a gap
+- the bag lists healing items, spare quartz and spare accessories, each with what it does
 
 It updates a few seconds after the game writes a save (the autosave slot is written every few minutes and after menu changes). No reload, no buttons.
 
@@ -40,12 +44,14 @@ The server is read-only, listens on 127.0.0.1 only, and has no dependencies. It 
 ## Files
 
 - `chapters-src/chN.js` (not committed) is the build for one chapter: party rules, where each quartz comes from, each character's target slots and accessories, boss prep and notes. A slot is either a quartz name or `[target, stand-in until you own it]`. `_lib.js` has the shared build templates.
-- `tools/build.js` turns those into `chapters/chN.dat` and `game-data.js`. It takes every character's line layout and slot locks, every quartz colour and value, and every Art's requirements from the game's own tables, and refuses to build if a note puts a quartz where it cannot go. `--report N` prints chapter N's lines, values and Arts.
+- `tools/build.js` turns those into `chapters/chN.dat` and `game-data.js`. It takes every character's line layout and slot locks, every quartz colour, value and effect, every accessory's stats and resistances, and every Art's requirements, EP cost and description from the game's own tables, and refuses to build if a note puts a quartz where it cannot go. `--report N` prints chapter N's lines, values and Arts. `--check-fx` prints each hand-written quartz effect line next to what the table says.
 - `app.js` draws the page: it works out what each slot should hold given what is owned, compares that with the save, and computes the Arts each layout gives.
 - `server.js` is the local live-sync server. `tools/read-save.js` reads a save and also works on its own: `node tools/read-save.js`.
 - `data.js` has the version and the chapter the published copy starts on.
 
 Names, chapter titles, layouts and Art requirements are read from the game's files; the save offsets were found by inspection, so the reader checks the layout first and stops with an error if a game update moves things.
+
+Add `?once` to the live URL to read the save a single time without keeping a connection open; that is what the screenshot checks use.
 
 Pushing to `main` publishes the page through GitHub Pages. No build step on the server side; run `node tools/build.js` before committing when the notes change.
 

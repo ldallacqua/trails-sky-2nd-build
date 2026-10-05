@@ -3,6 +3,7 @@
 //
 //   node tools/build.js            chapters-src/chN.js  ->  chapters/chN.dat, and game-data.js
 //   node tools/build.js --report 5 also print chapter 5's lines, values and Arts per character
+//   node tools/build.js --check-fx also print each hand-written effect line next to the table's
 //   node tools/build.js --unseal   recreate chapters-src/ from chapters/*.dat (fresh clone)
 //
 // Chapter files are "sealed" (base64) so that browsing the repo, a diff or a search does not
@@ -69,14 +70,69 @@ for (const e of skill.rows('SkillParam')) {
   const id = skill.b.readUInt16LE(e);
   if (!skillName.has(id)) skillName.set(id, skill.str(skill.b.readUInt32LE(e + 0x98)).trim());
 }
+const clean = (text) => text.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+const skillRow = new Map();
+for (const e of skill.rows('SkillParam')) { const id = skill.b.readUInt16LE(e); if (!skillRow.has(id)) skillRow.set(id, e); }
 const artElement = (id) => (id < 115 ? 'earth' : id < 135 ? 'water' : id < 150 ? 'fire' : id < 165 ? 'wind' : id < 180 ? 'time' : id < 195 ? 'space' : 'mirage');
 const arts = [];
 for (const e of orb.rows('ArtsParam')) {
   const id = orb.b.readUInt32LE(e);
   const req = {};
   ELEMENTS.forEach((el, k) => { const x = orb.b[e + 4 + k]; if (x) req[el] = x; });
-  if (skillName.get(id)) arts.push({ name: skillName.get(id), el: artElement(id), req });
+  if (!skillName.get(id)) continue;
+  const row = skillRow.get(id);
+  arts.push({
+    name: skillName.get(id), el: artElement(id), req,
+    ep: skill.b.readUInt32LE(row + 0x88),                    // base EP cost
+    d: clean(skill.str(skill.b.readUInt32LE(row + 0xa8))),   // the game's own description
+    k: skill.b.readUInt32LE(row + 0x30) === 15 ? 'a' : 's'   // attack Art or support Art
+  });
 }
+
+// ---- what quartz and accessories do, from the item table -----------------------
+// Flat stat bonuses sit in fixed fields; everything else is a list of (effect id, value, value)
+// whose wording comes from the game's own help table. Only effects whose number convention was
+// checked against the in-game text are worded here; the rest are left out rather than guessed.
+const STAT_FIELDS = [[0x94, 'Max HP', ''], [0x98, 'Max EP', ''], [0x9c, 'STR', ''], [0xa0, 'DEF', ''], [0xa4, 'ATS', ''], [0xa8, 'ADF', ''],
+  [0xb4, 'ACC', '%'], [0xb8, 'EVA', '%'], [0xbc, 'AEV', '%'], [0xc0, 'CRT', '%'], [0xc4, 'SPD', ''], [0xc8, 'MOV', '']];
+const help = loadTable('t_itemhelp.tbl');
+const template = new Map();
+for (const e of help.rows('SkillEffectHelpData')) template.set(help.b.readUInt32LE(e), help.str(help.b.readUInt32LE(e + 8)).trim());
+const PLAIN = new Set([1001, 1002, 1004, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1017, 1018, 1019, 1020, 1032, 1033, 1035, 1036,
+  1041, 1042, 1047, 1048, 1049, 1050, 1051, 1052, 1053, 1054, 1055, 1058, 1067, 1073, 1077, 1078, 1083, 1087, 1092, 1093]);
+const itemTable = loadTable('t_item.tbl');
+const itemRow = new Map();
+for (const e of itemTable.rows('ItemTableData')) itemRow.set(itemTable.b.readUInt32LE(e), e);
+function itemInfo(id) {
+  const b = itemTable.b, o = itemRow.get(id);
+  const stats = [], extra = [], res = {};
+  for (const [at, label, unit] of STAT_FIELDS) {
+    const v = b.readInt32LE(o + at);
+    if (v) stats.push(label + ' ' + (v > 0 ? '+' : '−') + Math.abs(v) + unit);
+  }
+  for (let p = 0x3c; p < 0x8c; p += 16) {
+    const fx = b.readUInt32LE(o + p), v = b.readInt32LE(o + p + 4), v2 = b.readInt32LE(o + p + 8);
+    const t = template.get(fx);
+    if (!fx || !t) continue;
+    const m = /^Resist (.+) \(%d%%\)$/.exec(t);
+    if (m) res[m[1]] = v;
+    else if (PLAIN.has(fx)) extra.push(t.replace('%d', v).replace(/%%/g, '%').replace(/\.$/, ''));
+    else if (fx === 1076) extra.push('CP gain rate +' + (v - 100) + '%');
+    else if (fx === 1065 || fx === 1066) extra.push(t.replace('%d', v2));
+    else if (fx === 1024) extra.push('EP cost ×' + (100 - v) / 100);
+    else if (fx === 1021) extra.push('Arts casting time ×' + v / 100);
+    else if (fx === 47) extra.push('Impede ' + v + '%');
+    else if ((fx >= 1059 && fx <= 1063) || fx === 1088) extra.push(t.replace('%s', '').trim());
+    else if (fx === 1081 || fx === 1082 || fx === 1090 || fx === 1091) extra.push(t.replace(/\.$/, ''));
+  }
+  // same shape as the stat bonuses: "DEF +35%", and a real minus sign
+  for (let k = 0; k < extra.length; k++) {
+    extra[k] = extra[k].replace(/([A-Za-z])([+-])(?=\d)/g, '$1 $2').replace(/ -(?=\d)/g, ' −')
+      .replace(/ UP when critical health/, ' up at critical HP').replace(/ when critical health/, ' at critical HP');
+  }
+  return { stats, extra, res, desc: clean(itemTable.str(b.readUInt32LE(o + 0xe8))) };
+}
+const kindOf = (id) => itemTable.b[itemRow.get(id) + 0x28] + '/' + itemTable.b[itemRow.get(id) + 0x29];
 
 // ---- chapters ----------------------------------------------------------------
 const FX = require(path.join(SRC, '_fx.js'));
@@ -163,7 +219,22 @@ if (problems.length) {
 const allQuartz = {};
 for (const [id, v] of quartzValues) {
   const name = game.items.get(id);
-  if (name) allQuartz[name] = [colourOf(id), ELEMENTS.map((e) => v[e] || 0)];
+  if (!name) continue;
+  const info = itemInfo(id);
+  // effect text: the hand-written line when there is one, otherwise worded from the table
+  allQuartz[name] = [colourOf(id), ELEMENTS.map((e) => v[e] || 0), FX[name] || info.stats.concat(info.extra).join(', '), info.res];
+}
+// every accessory: name -> [stats and effects, { status: % resisted }]
+const allAccessories = {};
+// healing and support items: name -> the game's description
+const supplies = {};
+for (const [id, name] of game.items) {
+  if (!name || !itemRow.has(id)) continue;
+  const kind = kindOf(id);
+  if (kind === '14/11' && !allAccessories[name]) {
+    const info = itemInfo(id);
+    allAccessories[name] = [info.stats.concat(info.extra).join(', '), info.res];
+  } else if ((kind === '1/1' || kind === '1/2') && !supplies[name]) supplies[name] = itemInfo(id).desc;
 }
 
 fs.mkdirSync(OUT, { recursive: true });
@@ -175,9 +246,17 @@ fs.writeFileSync(path.join(ROOT, 'game-data.js'),
   '// Generated by tools/build.js from the game’s own tables. Do not edit.\n' +
   '// Sealed like the chapter files, because it lists every quartz in the game by name.\n' +
   'window.GAME = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob("' +
-  seal({ chapters: built.map((c) => c.n), arts, quartz: allQuartz }) +
+  seal({ chapters: built.map((c) => c.n), arts, quartz: allQuartz, accessories: allAccessories, supplies }) +
   '"), function (c) { return c.charCodeAt(0); })));\n');
-console.log('game-data.js  ' + arts.length + ' Arts, chapters ' + built.map((c) => c.n).join(' '));
+console.log('game-data.js  ' + arts.length + ' Arts, ' + Object.keys(allQuartz).length + ' quartz, ' + Object.keys(allAccessories).length + ' accessories, chapters ' + built.map((c) => c.n).join(' '));
+
+// --check-fx: put the hand-written effect lines next to what the table says, to catch slips
+if (args.includes('--check-fx')) {
+  for (const name of Object.keys(FX)) {
+    const info = itemInfo(idByName.get(name));
+    console.log(name.padEnd(16) + FX[name] + '\n' + ''.padEnd(16) + '  table: ' + info.stats.concat(info.extra).join(', '));
+  }
+}
 
 const r = args.indexOf('--report');
 if (r !== -1) {

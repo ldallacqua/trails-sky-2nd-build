@@ -7,8 +7,14 @@
   var EL_SHORT = { earth: 'Ea', water: 'Wa', fire: 'Fi', wind: 'Wi', time: 'Ti', space: 'Sp', mirage: 'Mi' };
   var EL_NAME = { earth: 'Earth', water: 'Water', fire: 'Fire', wind: 'Wind', time: 'Time', space: 'Space', mirage: 'Mirage' };
   var ORDER = ['t', 'ul', 'ur', 'c', 'll', 'lr', 'b'];
-  // slot centres as % of the dial box; same proportions as the in-game orbment
-  var POS = { t: [50, 9], ul: [17, 27.5], ur: [83, 27.5], c: [50, 46], ll: [17, 64.5], lr: [83, 64.5], b: [50, 83] };
+  // Slot centres as % of the square dial box: a regular hexagon around the centre, as on the
+  // in-game orbment. RING is the hexagon's radius.
+  var RING = 35.5, HALF = RING * 0.8660254;
+  var POS = {
+    t: [50, 50 - RING], ur: [50 + HALF, 50 - RING / 2], lr: [50 + HALF, 50 + RING / 2],
+    b: [50, 50 + RING], ll: [50 - HALF, 50 + RING / 2], ul: [50 - HALF, 50 - RING / 2], c: [50, 50]
+  };
+  var STATUSES = ['Poison', 'Freeze', 'Petrify', 'Sleep', 'Burn', 'Seal', 'Mute', 'Blind', 'Confuse', 'Deathblow', 'Stat Debuff', 'Slow', 'Delay', 'Status Ailments'];
   var POS_NAME = { c: 'Center', t: 'Top', ur: 'Upper-right', lr: 'Lower-right', b: 'Bottom', ll: 'Lower-left', ul: 'Upper-left' };
   var HUE = { estelle: 28, scherazard: 285, olivier: 46, kloe: 256, agate: 4, tita: 38, zin: 150 };
   var KEY = 'sky2-build-v2';
@@ -54,9 +60,9 @@
     });
     return n;
   }
-  function details(key, summaryNode, cls) {
+  function details(key, summaryNode, cls, openByDefault) {
     var d = el('details', cls || '');
-    d.open = !!openKeys[key];
+    d.open = key in openKeys ? !!openKeys[key] : !!openByDefault;
     d.addEventListener('toggle', function () { openKeys[key] = d.open; });
     var s = el('summary');
     if (typeof summaryNode === 'string') s.textContent = summaryNode; else s.appendChild(summaryNode);
@@ -69,7 +75,7 @@
   function quartz(name) {
     var g = G.quartz[name];
     var note = CH && CH.quartz[name];
-    return { el: g ? g[0] : 'mirage', v: g ? g[1] : [0, 0, 0, 0, 0, 0, 0], fx: note ? note.fx : '' };
+    return { el: g ? g[0] : 'mirage', v: g ? g[1] : [0, 0, 0, 0, 0, 0, 0], fx: (note && note.fx) || (g && g[2]) || '', res: (g && g[3]) || {} };
   }
   function lineValues(line, nameAt) {
     var sum = [0, 0, 0, 0, 0, 0, 0];
@@ -252,12 +258,22 @@
     return li;
   }
 
-  function avatar(id, name) {
-    var a = el('span', 'avatar', name.charAt(0));
+  function shortName(name) { return name === 'Scherazard' ? 'Schera' : name; }
+  // One letter, or two when someone else on the page starts with the same one.
+  function initial(id, name) {
+    var all = {};
+    if (live) Object.keys(live.characters).forEach(function (k) { all[k] = live.characters[k].name; });
+    else if (CH) CH.characters.forEach(function (c) { all[c.id] = c.name; });
+    var clash = Object.keys(all).some(function (k) { return k !== id && all[k].charAt(0) === name.charAt(0); });
+    return clash ? name.slice(0, 2) : name.charAt(0);
+  }
+  function avatar(id, name, cls, labelled) {
+    var a = el('span', 'avatar' + (cls ? ' ' + cls : ''), initial(id, name));
     var hue = HUE[id];
     if (hue == null) { hue = 0; for (var i = 0; i < id.length; i++) hue = (hue * 31 + id.charCodeAt(i)) % 360; }
     a.style.setProperty('--h', hue);
-    a.setAttribute('aria-hidden', 'true');
+    if (labelled) { a.title = name; a.setAttribute('role', 'img'); a.setAttribute('aria-label', name); }
+    else a.setAttribute('aria-hidden', 'true');
     return a;
   }
 
@@ -267,21 +283,35 @@
     var NS = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
-    svg.setAttribute('preserveAspectRatio', 'none');
     svg.setAttribute('aria-hidden', 'true');
     function shape(tag, attrs) {
       var n = document.createElementNS(NS, tag);
       Object.keys(attrs).forEach(function (k) { n.setAttribute(k, attrs[k]); });
-      n.setAttribute('vector-effect', 'non-scaling-stroke');
       svg.appendChild(n);
     }
-    shape('ellipse', { cx: 50, cy: 46, rx: 46, ry: 43, 'class': 'dial' });
-    shape('ellipse', { cx: 50, cy: 46, rx: 21, ry: 19.5, 'class': 'dial dial-inner' });
+    function ring(r, cls, extra) {
+      var attrs = { cx: 50, cy: 50, r: r, 'class': cls };
+      Object.keys(extra || {}).forEach(function (k) { attrs[k] = extra[k]; });
+      shape('circle', attrs);
+    }
+    // the casing: a round bezel, a face with minute marks, and a hub ring around the centre slot
+    ring(49.2, 'dial-bezel');
+    ring(45.6, 'dial-face');
+    ring(43.4, 'dial-ticks', { pathLength: 120, 'stroke-dasharray': '0.14 0.86' });
+    ring(43, 'dial-ticks dial-ticks-major', { pathLength: 12, 'stroke-dasharray': '0.035 0.965', transform: 'rotate(-90.5 50 50)' });
+    ring(16.5, 'dial-hub');
+    ring(14.2, 'dial-hub dial-hub-dashed');
     // each line is a chain: center, then slot to slot outwards, as on the in-game orbment
     lines.forEach(function (line, i) {
-      var pts = line.map(function (k) { return POS[k][0] + ',' + POS[k][1]; }).join(' ');
+      var pts = line.map(function (k) { return POS[k][0].toFixed(2) + ',' + POS[k][1].toFixed(2); }).join(' ');
       shape('polyline', { points: pts, 'class': 'rail-case' });
       shape('polyline', { points: pts, 'class': 'rail line-' + (i + 1) });
+    });
+    // sockets: a coloured ring means the slot only takes that element; dashed means an upgrade is pending
+    ORDER.forEach(function (k) {
+      var c = cells[k] || {};
+      shape('circle', { cx: POS[k][0].toFixed(2), cy: POS[k][1].toFixed(2), r: 7.5, 'class': 'socket' + (locks[k] ? ' socket-lock lock-' + locks[k] : '') });
+      if (c.later) shape('circle', { cx: POS[k][0].toFixed(2), cy: POS[k][1].toFixed(2), r: 9.4, 'class': 'socket-pending' });
     });
     wrap.appendChild(svg);
 
@@ -290,10 +320,10 @@
       var q = c.name ? quartz(c.name) : null;
       var lock = locks[k];
       var node = el('div', 'slot' + (c.change ? ' is-change' : '') + (c.ok ? ' is-ok' : '') + (c.later ? ' is-pending' : '') + (c.name ? '' : ' is-empty'));
-      node.style.left = POS[k][0] + '%';
-      node.style.top = POS[k][1] + '%';
+      node.style.left = POS[k][0].toFixed(2) + '%';
+      node.style.top = POS[k][1].toFixed(2) + '%';
       node.title = POS_NAME[k] + (c.name ? ': ' + c.name + (q.fx ? ' — ' + q.fx : '') : ': empty');
-      var orb = el('span', 'orb' + (q ? ' el-' + q.el : ' orb-empty') + (lock ? ' lock lock-' + lock : ''));
+      var orb = el('span', 'orb' + (q ? ' el-' + q.el : ' orb-empty'));
       if (c.ok) orb.appendChild(el('span', 'check', '✓'));
       add(node, orb, el('span', 'q', c.name || 'empty'));
       if (lock) node.appendChild(el('span', 'sub lockname el-text-' + lock, EL_NAME[lock] + ' only'));
@@ -331,10 +361,18 @@
     return box;
   }
 
+  function accessoryText(name) {
+    var g = G.accessories[name];
+    if (!g) return name;
+    var blocks = Object.keys(g[1]).map(function (s) { return (s === 'Status Ailments' ? 'all status ailments' : s) + ' ' + g[1][s] + '%'; });
+    return name + (g[0] ? ' — ' + g[0] : '') + (blocks.length ? ' · resists ' + blocks.join(', ') : '');
+  }
+
   function artChips(list, cls) {
     var p = el('p', 'chips art-chips');
     list.forEach(function (a) {
       var c = el('span', 'chip art ' + (cls || '') + ' el-' + a.el);
+      c.title = 'EP ' + a.ep + ' — ' + a.d;
       add(c, el('span', 'dot'), document.createTextNode(a.name));
       p.appendChild(c);
     });
@@ -412,7 +450,7 @@
     var names = {};
     have.forEach(function (a) { names[a.name] = true; });
     var gain = full.filter(function (a) { return !names[a.name]; });
-    var arts = details('arts-' + id, 'Arts with this layout (' + have.length + ')' + (gain.length ? ' · ' + gain.length + ' more after upgrades' : ''));
+    var arts = details('arts-' + id, 'Arts with this layout (' + have.length + ')' + (gain.length ? ' · ' + gain.length + ' more after upgrades' : ''), '', window.innerWidth >= 860);
     arts.appendChild(artChips(have));
     if (gain.length) add(arts, el('h4', 'h-later', 'Unlocked by the upgrades'), artChips(gain, 'art-later'));
     side.appendChild(arts);
@@ -424,7 +462,9 @@
       (b ? b.accessories : []).forEach(function (a) {
         var on = lc && lc.accessories.indexOf(a) !== -1;
         if (lc && !on) missing = true;
-        acc.appendChild(el('span', 'chip' + (lc ? (on ? ' chip-ok' : ' chip-missing') : ''), (on ? '✓ ' : '') + a));
+        var chip = el('span', 'chip' + (lc ? (on ? ' chip-ok' : ' chip-missing') : ''), (on ? '✓ ' : '') + a);
+        chip.title = accessoryText(a);
+        acc.appendChild(chip);
       });
       if (lc && (missing || !b || !b.accessories.length)) {
         acc.appendChild(el('span', 'acc-wearing', 'wearing ' + lc.accessories.map(function (x) { return x || 'nothing'; }).join(' + ')));
@@ -442,6 +482,258 @@
       card.appendChild(d);
     }
     return card;
+  }
+
+  // ---- party-wide views ----
+  // Who is shown, with what they have slotted and equipped right now (live), or what the build
+  // puts there given what is ticked (manual).
+  function members(m, ids) {
+    return ids.map(function (id) {
+      var b = buildOf(id), lc = live ? live.characters[id] : null;
+      if (!lc && !(b && m.alloc[id])) return null;
+      var nameAt = {};
+      ORDER.forEach(function (k) { nameAt[k] = lc ? lc.slots[k] : m.alloc[id][k].name; });
+      return {
+        id: id, name: b ? b.name : lc.name, lc: lc, lines: lc ? lc.lines : b.lines, nameAt: nameAt,
+        accessories: lc ? lc.accessories.filter(Boolean) : b.accessories
+      };
+    }).filter(Boolean);
+  }
+
+  function meter(label, now, max, cls) {
+    var box = el('div', 'meter ' + cls);
+    var pct = max ? Math.max(0, Math.min(100, Math.round(now / max * 100))) : 0;
+    if (cls !== 'meter-cp' && pct < 90) box.classList.add(pct < 50 ? 'is-low' : 'is-part');
+    var top = el('div', 'meter-top');
+    add(top, el('span', 'meter-label', label), el('span', 'meter-num', now + ' / ' + max));
+    var bar = el('div', 'meter-bar');
+    var fill = el('span');
+    fill.style.width = pct + '%';
+    bar.appendChild(fill);
+    return add(box, top, bar);
+  }
+
+  function renderStatus(m) {
+    var card = byId('status');
+    var ids = live ? m.active.concat(live.reserve).filter(function (id) { return live.characters[id] && live.characters[id].now; }) : [];
+    card.hidden = !ids.length;
+    if (!ids.length) return;
+    var host = byId('status-body');
+    host.textContent = '';
+    byId('status-when').textContent = 'as of the save at ' + new Date(live.save.written).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    var short = [];
+    ids.forEach(function (id) {
+      var lc = live.characters[id];
+      var bench = m.active.indexOf(id) === -1;
+      var row = el('div', 'st-row' + (bench ? ' is-bench' : ''));
+      var who = el('div', 'st-who');
+      add(who, avatar(id, lc.name), add(el('div', 'st-name'), el('strong', '', lc.name), el('span', 'st-sub', 'Lv ' + lc.level + (bench ? ' · reserve' : ''))));
+      var gear = el('div', 'st-gear');
+      [['Weapon', lc.weapon], ['Armor', lc.armor], ['Footwear', lc.shoes]].forEach(function (g) {
+        add(gear, add(el('span', 'gear' + (g[1] ? '' : ' gear-none')), el('b', '', g[0]), document.createTextNode(g[1] || 'none')));
+      });
+      add(row, who, meter('HP', lc.now.hp, lc.hp, 'meter-hp'), meter('EP', lc.now.ep, lc.ep, 'meter-ep'), meter('CP', lc.now.cp, lc.now.cpMax, 'meter-cp'), gear);
+      host.appendChild(row);
+      var low = [lc.now.hp < lc.hp * 0.9 ? 'HP' : '', lc.now.ep < lc.ep * 0.9 ? 'EP' : ''].filter(Boolean);
+      if (!bench && low.length) short.push(lc.name + ' (' + low.join(', ') + ')');
+    });
+    var note = byId('status-note');
+    note.className = short.length ? 'quiet' : 'allset';
+    note.textContent = short.length ? 'Running low: ' + short.join(', ') + '.' : '✓ Nobody in the party is below 90% HP or EP.';
+  }
+
+  // Which Arts the party can cast between them, from what is slotted now.
+  function renderArts(m) {
+    var host = byId('arts-body');
+    host.textContent = '';
+    var list = members(m, m.active);
+    var who = {};
+    list.forEach(function (c) {
+      artsFor(c.lines, c.nameAt).forEach(function (a) { (who[a.name] = who[a.name] || {})[c.id] = true; });
+    });
+    byId('arts-hint').textContent = (live ? 'Worked out from what is slotted in your save right now.' : 'Worked out from the layouts above, for what you have ticked.')
+      + ' EP is the base cost, before EP Cut.';
+    var avatars = function (a) {
+      var p = el('span', 'who');
+      list.forEach(function (c) { if (who[a.name][c.id]) p.appendChild(avatar(c.id, c.name, 'avatar-xs', true)); });
+      return p;
+    };
+
+    var support = G.arts.filter(function (a) { return who[a.name] && a.k === 's'; });
+    host.appendChild(el('h3', 'block-h', 'Support Arts'));
+    if (!support.length) host.appendChild(el('p', 'quiet', 'None with the current layouts.'));
+    else {
+      var wrap = el('div', 'table-scroll');
+      var t = el('table', 'matrix arts-matrix');
+      var hr = el('tr');
+      add(hr, el('th', '', 'Art'), el('th', 'num', 'EP'));
+      list.forEach(function (c) {
+        var th = el('th', 'col-who');
+        add(th, avatar(c.id, c.name, 'avatar-xs', true), el('span', 'col-name', shortName(c.name)));
+        hr.appendChild(th);
+      });
+      add(t, add(el('thead'), hr));
+      var tb = el('tbody');
+      support.forEach(function (a) {
+        var tr = el('tr');
+        var th = el('th', 'art-name el-' + a.el);
+        add(th, el('span', 'dot'), el('strong', '', a.name), el('span', 'fx', a.d));
+        add(tr, th, el('td', 'num', String(a.ep)));
+        list.forEach(function (c) {
+          var td = el('td', 'col-who');
+          if (who[a.name][c.id]) td.appendChild(avatar(c.id, c.name, 'avatar-xs', true));
+          else td.appendChild(el('span', 'no', '·'));
+          tr.appendChild(td);
+        });
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+      wrap.appendChild(t);
+      host.appendChild(wrap);
+    }
+
+    host.appendChild(el('h3', 'block-h', 'Attack Arts by element'));
+    var grid = el('div', 'el-rows');
+    ELS.forEach(function (e) {
+      var arts = G.arts.filter(function (a) { return who[a.name] && a.k === 'a' && a.el === e; });
+      var row = el('div', 'el-row el-' + e + (arts.length ? '' : ' is-none'));
+      row.appendChild(add(el('span', 'el-tag'), el('span', 'dot'), document.createTextNode(EL_NAME[e])));
+      var chips = el('div', 'chips');
+      arts.forEach(function (a) {
+        var chip = el('span', 'chip art-who');
+        chip.title = a.name + ' — EP ' + a.ep + '. ' + a.d;
+        add(chip, document.createTextNode(a.name), el('span', 'ep', String(a.ep)), avatars(a));
+        chips.appendChild(chip);
+      });
+      if (!arts.length) chips.appendChild(el('span', 'quiet', 'no one in the party has one'));
+      row.appendChild(chips);
+      grid.appendChild(row);
+    });
+    host.appendChild(grid);
+  }
+
+  // What each party member resists, from the accessories worn and the quartz slotted.
+  function resistOf(c) {
+    var best = {};
+    var take = function (res, from) {
+      Object.keys(res || {}).forEach(function (s) {
+        if (!best[s] || res[s] > best[s].pct) best[s] = { pct: res[s], from: from };
+      });
+    };
+    c.accessories.forEach(function (a) { if (G.accessories[a]) take(G.accessories[a][1], a); });
+    ORDER.forEach(function (k) { if (c.nameAt[k]) take(quartz(c.nameAt[k]).res, c.nameAt[k]); });
+    return best;
+  }
+  function renderGuard(m) {
+    var host = byId('guard-body');
+    host.textContent = '';
+    var list = members(m, m.active);
+    var res = list.map(resistOf);
+    var spare = {};
+    if (live) {
+      live.bag.accessories.forEach(function (x) {
+        var r = (G.accessories[x.name] || [])[1] || {};
+        Object.keys(r).forEach(function (s) { (spare[s] = spare[s] || []).push({ name: x.name, count: x.count, pct: r[s] }); });
+      });
+    }
+    byId('guard-hint').textContent = live
+      ? 'From the accessories worn and quartz slotted in your save. The last column is what in your bag would cover a gap.'
+      : 'From each build’s accessories and quartz.';
+    var rows = STATUSES.filter(function (s) {
+      return res.some(function (r) { return r[s]; }) || spare[s] || (s !== 'Status Ailments' && s !== 'Slow');
+    });
+    var wrap = el('div', 'table-scroll');
+    var t = el('table', 'matrix guard-matrix' + (live ? '' : ' no-spare'));
+    t.style.setProperty('--n', list.length);
+    var hr = el('tr');
+    hr.appendChild(el('th', '', 'Status'));
+    list.forEach(function (c) {
+      var th = el('th', 'col-who');
+      add(th, avatar(c.id, c.name, 'avatar-xs', true), el('span', 'col-name', shortName(c.name)));
+      hr.appendChild(th);
+    });
+    if (live) hr.appendChild(el('th', 'col-spare', 'Spare in your bag'));
+    add(t, add(el('thead'), hr));
+    var tb = el('tbody');
+    rows.forEach(function (s) {
+      var tr = el('tr');
+      tr.appendChild(el('th', '', s === 'Status Ailments' ? 'All status ailments' : s));
+      res.forEach(function (r, i) {
+        var td = el('td', 'col-who');
+        var x = r[s];
+        var pill = el('span', 'res ' + (x ? (x.pct >= 100 ? 'res-full' : 'res-part') : 'res-none'), x ? x.pct + '%' : '–');
+        pill.title = x ? list[i].name + ': ' + x.pct + '% from ' + x.from : list[i].name + ' has no protection';
+        td.appendChild(pill);
+        tr.appendChild(td);
+      });
+      if (live) {
+        var td = el('td', 'col-spare');
+        (spare[s] || []).sort(function (a, b) { return b.pct - a.pct; }).slice(0, 3).forEach(function (x) {
+          td.appendChild(el('span', 'chip chip-sm', x.name + ' ' + x.pct + '%' + (x.count > 1 ? ' ×' + x.count : '')));
+        });
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    wrap.appendChild(t);
+    host.appendChild(wrap);
+  }
+
+  // Look-up tables for everything named on this page.
+  function valueText(v) {
+    return ELS.map(function (e, i) { return v[i] ? EL_NAME[e] + ' ' + v[i] : ''; }).filter(Boolean).join(' · ');
+  }
+  function renderReference(m) {
+    var shown = CH.characters.filter(function (c) { return m.alloc[c.id]; });
+    var people = live ? Object.keys(live.characters).map(function (id) { return live.characters[id]; }) : [];
+
+    // quartz: everything in the builds shown, plus whatever is slotted on anyone
+    var where = {};
+    var note = function (name, text) { if (name) (where[name] = where[name] || []).push(text); };
+    var names = {};
+    shown.forEach(function (c) {
+      ORDER.forEach(function (k) {
+        var s = c.slots[k];
+        names[s.t] = true;
+        if (s.u) names[s.u] = true;
+        if (!live) note(m.alloc[c.id][k].name, c.name);
+      });
+    });
+    people.forEach(function (lc) { ORDER.forEach(function (k) { if (lc.slots[k]) { names[lc.slots[k]] = true; note(lc.slots[k], lc.name); } }); });
+    if (live) live.bag.quartz.forEach(function (x) { if (names[x.name]) note(x.name, 'bag' + (x.count > 1 ? ' ×' + x.count : '')); });
+    var qnames = Object.keys(names).sort(function (a, b) {
+      var d = ELS.indexOf(quartz(a).el) - ELS.indexOf(quartz(b).el);
+      return d || a.localeCompare(b);
+    });
+    var qt = byId('ref-quartz');
+    qt.textContent = '';
+    qnames.forEach(function (n) {
+      var q = quartz(n);
+      var tr = el('tr');
+      add(tr, add(el('th', 'el-' + q.el), el('span', 'dot'), document.createTextNode(n)), el('td', '', valueText(q.v)), el('td', '', q.fx || '—'),
+        el('td', where[n] ? '' : 'quiet', where[n] ? where[n].join(', ') : (live ? 'not owned yet' : '—')));
+      qt.appendChild(tr);
+    });
+    byId('ref-quartz-n').textContent = String(qnames.length);
+
+    // accessories: in the builds shown, worn, or spare in the bag
+    var aw = {};
+    var anote = function (name, text) { if (name) (aw[name] = aw[name] || []).push(text); };
+    shown.forEach(function (c) { c.accessories.forEach(function (a) { if (live) aw[a] = aw[a] || []; else anote(a, c.name); }); });
+    people.forEach(function (lc) { lc.accessories.forEach(function (a) { anote(a, lc.name); }); });
+    if (live) live.bag.accessories.forEach(function (x) { anote(x.name, 'bag' + (x.count > 1 ? ' ×' + x.count : '')); });
+    var at = byId('ref-acc');
+    at.textContent = '';
+    var anames = Object.keys(aw).sort(function (a, b) { return a.localeCompare(b); });
+    anames.forEach(function (n) {
+      var g = G.accessories[n] || ['', {}];
+      var blocks = Object.keys(g[1]).map(function (s) { return (s === 'Status Ailments' ? 'All status ailments' : s) + ' ' + g[1][s] + '%'; }).join(', ');
+      var tr = el('tr');
+      add(tr, el('th', '', n), el('td', '', g[0] || '—'), el('td', '', blocks || '—'), el('td', aw[n].length ? '' : 'quiet', aw[n].length ? aw[n].join(', ') : 'not owned'));
+      at.appendChild(tr);
+    });
+    byId('ref-acc-n').textContent = String(anames.length);
   }
 
   // ---- sections ----
@@ -626,15 +918,37 @@
     var card = byId('bag');
     card.hidden = !live;
     if (!live) return;
-    var chips = function (hostId, list) {
+    var chips = function (hostId, list, describe) {
       var host = byId(hostId);
       host.textContent = '';
       if (!list.length) { host.appendChild(el('span', 'quiet', 'none')); return; }
-      list.forEach(function (x) { host.appendChild(el('span', 'chip', x.name + (x.count > 1 ? ' ×' + x.count : ''))); });
+      list.forEach(function (x) {
+        var d = describe(x.name);
+        var chip = el('span', 'chip' + (d.cls ? ' ' + d.cls : ''));
+        if (d.dot) chip.appendChild(el('span', 'dot'));
+        chip.appendChild(document.createTextNode(x.name));
+        if (x.count > 1) chip.appendChild(el('span', 'n', '×' + x.count));
+        if (d.title) chip.title = d.title;
+        host.appendChild(chip);
+      });
     };
-    chips('bag-quartz', live.bag.quartz);
-    chips('bag-accessories', live.bag.accessories);
+    var supplies = live.bag.supplies || [];
+    var kind = function (k) { return supplies.filter(function (x) { return x.kind === k; }); };
+    var supply = function (name) { return { title: G.supplies[name] || '' }; };
+    chips('bag-recovery', kind('Recovery'), supply);
+    chips('bag-support', kind('Support'), supply);
+    byId('bag-supplies').hidden = !supplies.length;
+    chips('bag-quartz', live.bag.quartz, function (name) {
+      var q = quartz(name);
+      return { cls: 'el-' + q.el, dot: true, title: valueText(q.v) + (q.fx ? ' — ' + q.fx : '') };
+    });
+    chips('bag-accessories', live.bag.accessories, function (name) { return { title: accessoryText(name) }; });
+    var total = function (list) { return list.reduce(function (n, x) { return n + x.count; }, 0); };
+    byId('bag-quartz-n').textContent = total(live.bag.quartz) + ' spare';
+    byId('bag-accessories-n').textContent = total(live.bag.accessories) + ' spare';
     byId('bag-umat').textContent = String(live.bag.uMaterial);
+    var food = live.bag.food;
+    byId('bag-food').textContent = food ? food.total + ' dishes of ' + food.kinds + ' kinds' : '—';
   }
 
   function block(b, key) {
@@ -700,17 +1014,55 @@
   function renderNav(m) {
     var nav = byId('jump');
     nav.textContent = '';
-    var link = function (href, text) { var a = el('a', '', text); a.href = href; nav.appendChild(a); };
+    var link = function (href, text, node) {
+      var a = el('a', node ? 'jump-who' : '', node ? null : text);
+      a.href = href;
+      if (node) { a.appendChild(node); a.title = text; a.setAttribute('aria-label', text); }
+      nav.appendChild(a);
+    };
     link('#overview', 'Overview');
     link('#now', 'Next steps');
     if (m.rows.length) link('#get', 'Upgrades');
+    if (live) link('#status', 'Party');
+    link('#orbments', 'Orbments');
     m.active.forEach(function (id) {
       var n = buildOf(id) ? buildOf(id).name : (live && live.characters[id] ? live.characters[id].name : null);
-      if (n) link('#char-' + id, n === 'Scherazard' ? 'Schera' : n);
+      if (n) link('#char-' + id, n, avatar(id, n, 'avatar-xs'));
     });
-    CH.sections.forEach(function (s) { link('#sec-' + s.id, s.title); });
-    link('#about', 'About');
+    link('#coverage', 'Coverage');
+    if (live) link('#bag', 'Bag');
+    CH.sections.forEach(function (s) { link('#sec-' + s.id, s.title.replace(/^Chapter notes$/, 'Notes')); });
+    link('#reference', 'Reference');
+    spy();
   }
+
+  // Marks the nav link of the section being read, and keeps it in view in the nav strip.
+  var spyQueued = false;
+  function spy() {
+    spyQueued = false;
+    var nav = byId('jump');
+    var links = nav.querySelectorAll('a');
+    var current = null;
+    for (var i = 0; i < links.length; i++) {
+      var target = document.getElementById(links[i].getAttribute('href').slice(1));
+      if (target && !target.hidden && target.getBoundingClientRect().top < 140) current = links[i];
+    }
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4 && links.length) current = links[links.length - 1];
+    for (var j = 0; j < links.length; j++) links[j].classList.toggle('is-current', links[j] === current);
+    if (current && nav.scrollWidth > nav.clientWidth) {
+      var left = current.offsetLeft - nav.offsetLeft;
+      if (left < nav.scrollLeft + 24 || left + current.offsetWidth > nav.scrollLeft + nav.clientWidth - 24) {
+        nav.scrollLeft = left - (nav.clientWidth - current.offsetWidth) / 2;
+      }
+    }
+    nav.parentNode.classList.toggle('can-scroll', nav.scrollWidth > nav.clientWidth + 2);
+  }
+  window.addEventListener('scroll', function () {
+    if (!spyQueued) { spyQueued = true; window.requestAnimationFrame(spy); }
+  }, { passive: true });
+  window.addEventListener('resize', function () {
+    if (!spyQueued) { spyQueued = true; window.requestAnimationFrame(spy); }
+  });
 
   function render() {
     renderMast();
@@ -723,9 +1075,13 @@
     renderOverview(m);
     renderNow(m);
     renderGet(m);
+    renderStatus(m);
     renderParty(m);
+    renderArts(m);
+    renderGuard(m);
     renderBag();
     renderSections();
+    renderReference(m);
     renderNav(m);
   }
 
@@ -776,6 +1132,7 @@
         if (!data || !data.characters) { start(); return; }
         live = data; liveOnline = true;
         start();
+        if (/[?&]once\b/.test(location.search)) return; // ?once: read the save a single time and do not keep a connection open
         var es = new EventSource('api/events');
         es.onmessage = function (ev) {
           try { live = JSON.parse(ev.data); liveOnline = true; start(); } catch (e) { /* ignore a bad frame */ }

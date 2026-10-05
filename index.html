@@ -10,6 +10,17 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <svg class="defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="g-bezel" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" class="g-bezel-a"/><stop offset="0.5" class="g-bezel-b"/><stop offset="1" class="g-bezel-c"/>
+      </linearGradient>
+      <radialGradient id="g-face" cx="0.5" cy="0.42" r="0.62">
+        <stop offset="0" class="g-face-a"/><stop offset="1" class="g-face-b"/>
+      </radialGradient>
+    </defs>
+  </svg>
+
   <header class="mast">
     <div class="wrap mast-row">
       <div class="brand">
@@ -64,6 +75,15 @@
       </div>
     </section>
 
+    <section class="card" id="status" aria-labelledby="status-h" hidden>
+      <div class="card-head">
+        <h2 id="status-h">Party status</h2>
+        <span class="count" id="status-when"></span>
+      </div>
+      <div id="status-body" class="st-rows"></div>
+      <p id="status-note" class="quiet"></p>
+    </section>
+
     <section aria-labelledby="chars-h" id="orbments">
       <div class="section-head">
         <h2 id="chars-h" class="section-title">Orbments</h2>
@@ -72,16 +92,49 @@
           <li><span class="orb orb-sm lock lock-wind el-wind"></span> ring = locked slot</li>
           <li><span class="mark mark-change">name</span> swap now</li>
           <li><span class="orb orb-sm is-pending-demo"></span> upgrade pending</li>
-          <li><span class="rail-demo"></span> lines run from the center outwards, as in game</li>
+          <li><span class="rail-demo"></span> lines run from the center outwards</li>
         </ul>
       </div>
+
       <div id="party"></div>
       <div id="reserve"></div>
     </section>
 
+    <section aria-labelledby="cov-h" id="coverage">
+      <div class="section-head">
+        <h2 id="cov-h" class="section-title">Coverage</h2>
+        <p class="section-sub">What the party can do between them, and what it is protected against.</p>
+      </div>
+      <div class="card" id="arts">
+        <h3 class="card-title">Party Arts</h3>
+        <p class="quiet" id="arts-hint"></p>
+        <div id="arts-body"></div>
+      </div>
+      <div class="card" id="guard">
+        <h3 class="card-title">Status protection</h3>
+        <p class="quiet" id="guard-hint"></p>
+        <div id="guard-body"></div>
+        <p class="quiet">100% is immunity. Anything less is a chance to resist.</p>
+      </div>
+    </section>
+
     <section class="card" id="bag" aria-labelledby="bag-h" hidden>
-      <h2 id="bag-h">Your bag</h2>
-      <p class="quiet">Read from your save. U-Material: <strong id="bag-umat"></strong></p>
+      <div class="card-head">
+        <h2 id="bag-h">Your bag</h2>
+        <span class="count">read from your save</span>
+      </div>
+      <div class="bag-facts">
+        <div class="fact"><span class="fact-label">U-Material</span><strong id="bag-umat"></strong></div>
+        <div class="fact"><span class="fact-label">Food</span><strong id="bag-food"></strong></div>
+        <div class="fact"><span class="fact-label">Spare quartz</span><strong id="bag-quartz-n"></strong></div>
+        <div class="fact"><span class="fact-label">Spare accessories</span><strong id="bag-accessories-n"></strong></div>
+      </div>
+      <div id="bag-supplies">
+        <h3 class="block-h">Recovery items</h3>
+        <p class="chips" id="bag-recovery"></p>
+        <h3 class="block-h">Status cures and support</h3>
+        <p class="chips" id="bag-support"></p>
+      </div>
       <details>
         <summary>Spare quartz</summary>
         <p class="chips" id="bag-quartz"></p>
@@ -90,38 +143,53 @@
         <summary>Spare accessories</summary>
         <p class="chips" id="bag-accessories"></p>
       </details>
+      <p class="quiet">Hover or long-press a chip to see what it does.</p>
     </section>
 
     <div id="sections"></div>
 
-    <section class="card" id="about" aria-labelledby="about-h">
-      <h2 id="about-h">About this page</h2>
+    <section aria-labelledby="ref-h" id="reference">
+      <div class="section-head">
+        <h2 id="ref-h" class="section-title">Reference</h2>
+        <p class="section-sub">Look-up tables, read from the game’s own data.</p>
+      </div>
+      <div class="card" id="lookup">
+        <h3 class="card-title">Look-up</h3>
+        <details>
+          <summary>Quartz on this page <span class="tag" id="ref-quartz-n"></span></summary>
+          <div class="table-scroll">
+            <table class="plain ref-table">
+              <thead><tr><th>Quartz</th><th>Elemental value</th><th>Effect</th><th>Where it is</th></tr></thead>
+              <tbody id="ref-quartz"></tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>Accessories you have or need <span class="tag" id="ref-acc-n"></span></summary>
+          <div class="table-scroll">
+            <table class="plain ref-table">
+              <thead><tr><th>Accessory</th><th>Stats</th><th>Resists</th><th>Where it is</th></tr></thead>
+              <tbody id="ref-acc"></tbody>
+            </table>
+          </div>
+        </details>
+        <details>
+          <summary>How orbments work</summary>
+          <ul class="notes">
+            <li><strong>Lines.</strong> Every slot sits on a line that starts at the center. The center slot counts for every line.</li>
+            <li><strong>Elemental values.</strong> Each quartz adds points to one or more of the seven elements. The game adds them up per line; that is the Value box in the orbment menu.</li>
+            <li><strong>Arts.</strong> An Art unlocks when a single line reaches its requirement. Points on different lines do not combine, which is why a character with one long line casts far more than one with four short lines.</li>
+            <li><strong>Locked slots.</strong> A slot with a coloured arc above it only takes quartz of that element. White slots take anything.</li>
+            <li><strong>One of a kind.</strong> Two quartz of the same family, such as Action 3 and Action 4, cannot sit on one orbment.</li>
+            <li><strong>Ranks.</strong> A higher rank of a quartz usually adds one elemental point and a little more of its effect. The extra point is often what unlocks the next Art.</li>
+            <li><strong>Resistances.</strong> 100% is immunity. Lower numbers are a chance, and the best single source counts on this page.</li>
+          </ul>
+        </details>
+      </div>
+
+      <div class="card" id="about">
+      <h3 class="card-title" id="about-h">About this page</h3>
       <p class="quiet">It shows one chapter at a time. Notes for later chapters are already written, but they stay sealed until your save reaches that chapter.</p>
-      <details>
-        <summary>What each accessory does</summary>
-        <div class="table-scroll">
-          <table class="plain">
-            <thead><tr><th>Accessory</th><th>Stats</th><th>Blocks (100%)</th></tr></thead>
-            <tbody>
-              <tr><th>Force Seal+</th><td>STR/ATS +50, crit +10%</td><td>Stat down</td></tr>
-              <tr><th>Red Sphere+</th><td>STR/DEF +60, SPD +10</td><td>Freeze, Petrify, Delay</td></tr>
-              <tr><th>Blue Sphere+</th><td>ATS/ADF +60, SPD +10</td><td>Burn, Confuse, Deathblow</td></tr>
-              <tr><th>Green Sphere+</th><td>SPD +10, crit/EVA/magic EVA +6%</td><td>Poison, Blind, Sleep</td></tr>
-              <tr><th>Yellow Sphere+</th><td>DEF/ADF +100, SPD +10</td><td>Seal, Mute, Stat down</td></tr>
-              <tr><th>Feather Brooch+</th><td>SPD +15, EVA +10%</td><td>Delay</td></tr>
-              <tr><th>Victory Headband</th><td>STR/DEF +30, hit +50%, CP gain +30%</td><td>—</td></tr>
-              <tr><th>Master Beads X</th><td>STR +120, SPD +15</td><td>Seal, Blind</td></tr>
-              <tr><th>Vajra X</th><td>ATS +120, SPD +15</td><td>Mute, Freeze</td></tr>
-              <tr><th>Glam Choker+</th><td>ATS +30, SPD +5</td><td>Mute</td></tr>
-              <tr><th>Pearl Earrings+</th><td>STR +30, SPD +5</td><td>Seal</td></tr>
-              <tr><th>Skull Pendant+</th><td>Max HP +2000, SPD +5</td><td>Deathblow</td></tr>
-              <tr><th>Black Bangle+</th><td>SPD +9, MOV +6</td><td>Sleep</td></tr>
-              <tr><th>Lily Necklace+</th><td>SPD +5, magic EVA +10%</td><td>Confuse</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p class="quiet">Stats are from a Japanese guide; names are from the game's English item table. Un-upgraded versions block at 75%.</p>
-      </details>
       <details>
         <summary>What is verified, and how</summary>
         <div class="table-scroll">
@@ -132,9 +200,12 @@
               <tr><th>Line paths and slot locks</th><td>The game's own orbment table, generated per character. The four in-game screenshots match it.</td></tr>
               <tr><th>Quartz colours and elemental values</th><td>The game's own quartz table</td></tr>
               <tr><th>Which Arts a layout gives</th><td>Computed from the game's own Arts table</td></tr>
+              <tr><th>Art EP costs and descriptions</th><td>The game's own skill table</td></tr>
+              <tr><th>Accessory stats and resistances</th><td>The game's own item table</td></tr>
+              <tr><th>Quartz effects</th><td>The game's own item table, worded with the game's help text. Effects whose numbers could not be checked against in-game text are left out.</td></tr>
+              <tr><th>HP, EP, CP, gear and bag</th><td>Read directly from the save file, as of the last save</td></tr>
               <tr><th>English names</th><td>The game's own English tables</td></tr>
               <tr><th>Quartz locations</th><td>Kago chest lists and Kamigame's quartz list agree</td></tr>
-              <tr><th>Accessory stats and higher-rank quartz effects</th><td>Kamigame lists</td></tr>
               <tr><th>Party rules and boss mechanics</th><td>Kamigame and Silver Intention walkthroughs</td></tr>
             </tbody>
           </table>
@@ -145,8 +216,10 @@
           <li>Kago lists Jade Guard as Wind 2 and Topaz Guard as Earth 2. The game has Wind 3 and Earth 3.</li>
           <li>Earlier versions listed “Divine Cross” and “Black Bangle X”. The English names are Divine Cloth and Black Bangle+.</li>
           <li>Earlier versions said “Elize Turnpike”. The game calls it Elize Highway.</li>
+          <li>Earlier versions gave Breeze an item range of +30m. The game's table has +10m.</li>
+          <li>The guide's accessory list leaves out SPD +5 on Force Seal+ and Victory Headband. The game's table has it.</li>
         </ul>
-        <p>Not verified: accessory stat numbers (guide only), and whether specific bosses resist specific debuffs.</p>
+        <p>Not verified: whether specific bosses resist specific debuffs, and what “All status ailments” covers exactly.</p>
       </details>
       <details>
         <summary>Sources <span class="tag tag-warn">these sites spoil later chapters</span></summary>
@@ -159,6 +232,13 @@
       </details>
       <details>
         <summary>Change log</summary>
+        <h3>v19 — 2026-10-05</h3>
+        <ul class="notes">
+          <li>The orbment is a round dial again, with the slots on a regular hexagon as in game.</li>
+          <li>New: party status (HP, EP, CP and gear as of the last save), party Arts, status protection, healing items in the bag, and look-up tables for quartz and accessories.</li>
+          <li>Accessory stats, quartz effects and Art costs now come from the game's own tables instead of guides.</li>
+          <li>Spacing and navigation tidied; the nav marks the section you are reading.</li>
+        </ul>
         <h3>v18 — 2026-10-05</h3>
         <ul class="notes">
           <li>Chapters. Notes for every remaining chapter are written and sealed; the live page opens each one when your save reaches it, and the published page asks before opening the next.</li>
@@ -183,6 +263,7 @@
         </ul>
       </details>
       <p class="quiet foot-meta"><span id="meta-version"></span></p>
+      </div>
     </section>
   </main>
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Reads the newest Trails in the Sky 2nd Chapter save and reports the chapter, the party,
-// what each character has slotted and equipped, and the spare quartz, accessories and
-// U-Material in the bag.
+// what each character has slotted and equipped (with HP, EP and CP as of the save), and the
+// spare quartz, accessories, healing items and U-Material in the bag.
 //
 // Read-only: it never writes to the save folder or the game folder.
 // Needs Node 22.15+ (built-in Zstandard). No dependencies.
@@ -38,6 +38,10 @@ const SLOT_NAME = { c: 'Center', ll: 'Lower-left', ul: 'Upper-left', t: 'Top', u
 const ELEMENTS = ['earth', 'water', 'fire', 'wind', 'time', 'space', 'mirage'];
 const QUARTZ = [3700, 4400];
 const ACCESSORY = [1500, 1700];
+// item kinds, from the item table: [type, sub-type]
+const KIND_AT = 0x28;
+const SUPPLY = { '1/1': 'Recovery', '1/2': 'Support' };
+const FOOD = { '1/3': 1, '1/4': 1, '1/32': 1 };
 
 // ---- game tables -------------------------------------------------------------
 function readFromPac(pacFile, wantedName) {
@@ -79,20 +83,26 @@ function loadTable(name) {
   return { b, str, rows };
 }
 
-function loadItemNames() {
+function loadItemNames(kinds) {
   const t = loadTable('t_item.tbl');
   const names = new Map();
-  for (const e of t.rows('ItemTableData')) names.set(t.b.readUInt32LE(e), t.str(t.b.readUInt32LE(e + 0xe0)));
+  for (const e of t.rows('ItemTableData')) {
+    const id = t.b.readUInt32LE(e);
+    names.set(id, t.str(t.b.readUInt32LE(e + 0xe0)));
+    if (kinds) kinds.set(id, t.b[e + KIND_AT] + '/' + t.b[e + KIND_AT + 1]);
+  }
   return names;
 }
 
 // Everything the reader needs from the game, loaded once.
 //   items     id -> English name
+//   kinds     id -> "type/sub-type" as the item table has it
 //   people    character id -> { id, name } for everyone who has an orbment
 //   layouts   character id -> { lines: [[slot keys from the center outwards]], locks: { slot: element } }
 //   chapters  chapter number -> title
 function loadGame() {
-  const items = loadItemNames();
+  const kinds = new Map();
+  const items = loadItemNames(kinds);
 
   const orb = loadTable('t_orbment.tbl');
   const layouts = new Map();
@@ -130,7 +140,7 @@ function loadGame() {
     const n = ch.b.readUInt16LE(e);
     if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
   }
-  return { items, people, layouts, chapters };
+  return { items, kinds, people, layouts, chapters };
 }
 
 // ---- save --------------------------------------------------------------------
@@ -184,6 +194,8 @@ function readSaveFile(file, game) {
     characters[who.id] = {
       id: who.id, name: who.name, level,
       hp: b.readUInt32LE(s + 16), ep: b.readUInt32LE(s + 24),
+      // as of the moment the game wrote this save
+      now: { hp: b.readUInt32LE(s + 12), ep: b.readUInt32LE(s + 20), cp: b.readUInt32LE(s + 28), cpMax: b.readUInt32LE(s + 32) },
       slots: Object.fromEntries(SLOT_ORDER.map((k, n) => [k, nm(q[n])])),
       lines: lay.lines, locks: lay.locks,
       weapon: gear[0], armor: gear[1], shoes: gear[2], accessories: [gear[3], gear[4]]
@@ -209,13 +221,15 @@ function readSaveFile(file, game) {
     chapter = { n, title: game.chapters.get(n) };
   }
 
-  const bag = { quartz: [], accessories: [], uMaterial: 0 };
+  const bag = { quartz: [], accessories: [], supplies: [], food: { kinds: 0, total: 0 }, uMaterial: 0 };
   for (const [id, name] of game.items) {
     const count = b.readUInt16LE(INV_BASE + id * 4);
     if (!count) continue;
     if (id >= QUARTZ[0] && id < QUARTZ[1]) bag.quartz.push({ name, count });
     else if (id >= ACCESSORY[0] && id < ACCESSORY[1]) bag.accessories.push({ name, count });
     else if (name === 'U-Material') bag.uMaterial = count;
+    else if (game.kinds && SUPPLY[game.kinds.get(id)]) bag.supplies.push({ name, count, kind: SUPPLY[game.kinds.get(id)] });
+    else if (game.kinds && FOOD[game.kinds.get(id)]) { bag.food.kinds++; bag.food.total += count; }
   }
   return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag };
 }
@@ -238,7 +252,7 @@ function main() {
   const nameOf = (id) => data.characters[id].name;
   console.log('Party: ' + data.party.map(nameOf).join(', ') + (data.reserve.length ? '   Reserve: ' + data.reserve.map(nameOf).join(', ') : '') + '\n');
   for (const c of Object.values(data.characters)) {
-    console.log(c.name + '  (Lv ' + c.level + ', HP ' + c.hp + ', EP ' + c.ep + ')');
+    console.log(c.name + '  (Lv ' + c.level + ', HP ' + c.now.hp + '/' + c.hp + ', EP ' + c.now.ep + '/' + c.ep + ', CP ' + c.now.cp + '/' + c.now.cpMax + ')');
     for (const k of ['t', 'ul', 'ur', 'c', 'll', 'lr', 'b']) {
       console.log('   ' + SLOT_NAME[k].padEnd(12) + (c.slots[k] || '(empty)') + (c.locks[k] ? '   [' + c.locks[k] + ' only]' : ''));
     }
@@ -249,6 +263,8 @@ function main() {
   const list = (xs) => xs.map((x) => x.name + (x.count > 1 ? ' x' + x.count : '')).join(', ') || '(none)';
   console.log('Spare quartz in the bag:\n  ' + list(data.bag.quartz) + '\n');
   console.log('Spare accessories in the bag:\n  ' + list(data.bag.accessories) + '\n');
+  console.log('Healing and support items:\n  ' + list(data.bag.supplies) + '\n');
+  console.log('Food: ' + data.bag.food.total + ' across ' + data.bag.food.kinds + ' kinds');
   console.log('U-Material: ' + data.bag.uMaterial);
 }
 
