@@ -4,85 +4,79 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sky 2nd Chapter — Living Build</title>
-  <meta name="description" content="Party build notes for a Trails in the Sky 2nd Chapter (remake) playthrough. Covers the current chapter only.">
+  <meta name="description" content="Party build notes for a Trails in the Sky 2nd Chapter (remake) playthrough. Shows one chapter at a time.">
   <meta name="robots" content="noindex">
+  <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="top">
-    <div class="wrap">
-      <p class="eyebrow">Trails in the Sky 2nd Chapter · Remake</p>
-      <h1>Living Build</h1>
-      <p class="meta">
-        <span id="meta-chapter" class="pill pill-strong"></span>
-        <span class="pill"><span id="meta-version"></span> · updated <span id="meta-updated"></span></span>
-        <span class="pill">Current chapter only — no later-chapter spoilers</span>
-      </p>
+  <header class="mast">
+    <div class="wrap mast-row">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="22" class="bm-ring"/>
+          <polyline points="24,24 9,31.5 9,16.5 24,8" class="bm-rail bm-a"/>
+          <polyline points="24,24 39,16.5 39,31.5 24,40" class="bm-rail bm-b"/>
+          <circle cx="24" cy="8" r="3.4" class="bm-orb"/><circle cx="9" cy="16.5" r="3.4" class="bm-orb"/>
+          <circle cx="39" cy="16.5" r="3.4" class="bm-orb"/><circle cx="9" cy="31.5" r="3.4" class="bm-orb"/>
+          <circle cx="39" cy="31.5" r="3.4" class="bm-orb"/><circle cx="24" cy="40" r="3.4" class="bm-orb"/>
+          <circle cx="24" cy="24" r="5" class="bm-core"/>
+        </svg>
+        <div>
+          <p class="eyebrow">Trails in the Sky 2nd Chapter · Remake</p>
+          <h1>Living Build</h1>
+        </div>
+      </div>
+      <div class="mast-meta">
+        <span id="chapter-chip" class="mchip mchip-chapter" hidden></span>
+        <span id="live-chip" class="mchip mchip-live" hidden><span class="pulse" aria-hidden="true"></span><span id="live-text"></span></span>
+      </div>
     </div>
   </header>
 
-  <div id="live-bar" class="live-bar" hidden>
-    <div class="wrap"><span class="pulse" aria-hidden="true"></span><span id="live-text"></span></div>
-  </div>
-
   <nav class="jump" aria-label="Sections">
-    <div class="wrap">
-      <a href="#now">Do now</a>
-      <a href="#find">Find</a>
-      <a href="#estelle">Estelle</a>
-      <a href="#schera">Schera</a>
-      <a href="#kloe">Kloe</a>
-      <a href="#zin">Zin</a>
-      <a href="#accessories">Accessories</a>
-      <a href="#boss">Boss prep</a>
-      <a href="#plan">Battle plan</a>
-    </div>
+    <div class="wrap" id="jump"></div>
   </nav>
 
-  <main class="wrap">
+  <main class="wrap" id="app">
+    <p id="notice" class="card notice" hidden></p>
 
-    <section class="card party" aria-labelledby="party-h">
-      <h2 id="party-h">Party</h2>
-      <ul class="party-list">
-        <li><strong>Estelle</strong><span>fixed by the story</span></li>
-        <li><strong>Scherazard</strong><span>fixed by the story</span></li>
-        <li><strong>Kloe</strong><span>your pick</span></li>
-        <li><strong>Zin</strong><span>your pick</span></li>
-      </ul>
-      <p class="quiet">Same four for the whole chapter. Tita stays on the bench with her build intact.</p>
-    </section>
+    <div id="overview"></div>
 
     <section class="card" id="now" aria-labelledby="now-h">
-      <div class="card-head">
-        <h2 id="now-h">Do now</h2>
-        <button type="button" id="applied-toggle" class="btn"></button>
-      </div>
-      <div id="do-now-live" hidden></div>
-      <div id="do-now">
-        <p class="quiet">As of the save read on 2026-10-05, 02:26. This published page cannot see your save; run the local live page (<code>start-live.cmd</code>) to keep it current by itself.</p>
-        <ol class="steps">
-          <li><strong>All four match the build</strong> for what you own, including Action 4 on Schera and Defense 4 on Zin.</li>
-          <li><strong>Next:</strong> slot each quartz below as you find it.</li>
-        </ol>
-        <p class="done-note">Marked as done. The “was …” notes on the diagrams are hidden.</p>
-      </div>
+      <h2 id="now-h">Next steps</h2>
+      <div id="now-body"></div>
     </section>
 
-    <section class="card" id="find" aria-labelledby="find-h">
+    <section class="card" id="get" aria-labelledby="get-h">
       <div class="card-head">
-        <h2 id="find-h">Find and slot</h2>
-        <span class="count" id="unique-count"></span>
+        <h2 id="get-h">Upgrade list</h2>
+        <span class="count" id="get-count"></span>
       </div>
-      <p class="quiet" id="find-hint"></p>
+      <p class="quiet" id="get-hint"></p>
       <div class="table-scroll">
         <table class="find-table">
           <thead>
             <tr><th class="col-check">Have</th><th>Quartz</th><th>Where</th><th>Goes to</th></tr>
           </thead>
-          <tbody id="unique-rows"></tbody>
+          <tbody id="get-rows"></tbody>
         </table>
       </div>
-      <p class="quiet">Rank 4 is only +5 points over rank 3. The real gain is the extra elemental point, which unlocks new Arts.</p>
+    </section>
+
+    <section aria-labelledby="chars-h" id="orbments">
+      <div class="section-head">
+        <h2 id="chars-h" class="section-title">Orbments</h2>
+        <ul class="legend">
+          <li><span class="orb orb-sm el-wind legend-ok"><span class="check">✓</span></span> already slotted</li>
+          <li><span class="orb orb-sm lock lock-wind el-wind"></span> ring = locked slot</li>
+          <li><span class="mark mark-change">name</span> swap now</li>
+          <li><span class="orb orb-sm is-pending-demo"></span> upgrade pending</li>
+          <li><span class="rail-demo"></span> lines run from the center outwards, as in game</li>
+        </ul>
+      </div>
+      <div id="party"></div>
+      <div id="reserve"></div>
     </section>
 
     <section class="card" id="bag" aria-labelledby="bag-h" hidden>
@@ -98,31 +92,11 @@
       </details>
     </section>
 
-    <section aria-labelledby="chars-h">
-      <h2 id="chars-h" class="section-title">Orbments</h2>
-      <ul class="legend">
-        <li><span class="orb orb-sm el-wind legend-ok"><span class="check">✓</span></span> tick = already slotted (live page only)</li>
-        <li><span class="orb orb-sm lock lock-wind el-wind"></span> coloured ring = locked slot</li>
-        <li><span class="mark mark-change">name</span> = swap now</li>
-        <li><span class="orb orb-sm is-pending-demo"></span> dashed = waiting on a quartz you have not found</li>
-      </ul>
-      <div id="characters"></div>
-    </section>
+    <div id="sections"></div>
 
-    <section class="card" id="accessories" aria-labelledby="acc-h">
-      <h2 id="acc-h">Accessories</h2>
-      <div class="table-scroll">
-        <table class="plain">
-          <thead><tr><th>Character</th><th>Slot 1</th><th>Slot 2</th></tr></thead>
-          <tbody>
-            <tr><th>Estelle</th><td>Force Seal+</td><td>Red Sphere+</td></tr>
-            <tr><th>Scherazard</th><td>Vajra X</td><td>Feather Brooch+</td></tr>
-            <tr><th>Kloe</th><td>Blue Sphere+</td><td>Feather Brooch+</td></tr>
-            <tr><th>Zin</th><td>Master Beads X</td><td>Red Sphere+</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="quiet">This is what all four are wearing in your save, and it is a good default. Victory Headband (on Tita) can replace Schera's Feather Brooch+ if you want faster CP for Heaven's Kiss.</p>
+    <section class="card" id="about" aria-labelledby="about-h">
+      <h2 id="about-h">About this page</h2>
+      <p class="quiet">It shows one chapter at a time. Notes for later chapters are already written, but they stay sealed until your save reaches that chapter.</p>
       <details>
         <summary>What each accessory does</summary>
         <div class="table-scroll">
@@ -133,101 +107,20 @@
               <tr><th>Red Sphere+</th><td>STR/DEF +60, SPD +10</td><td>Freeze, Petrify, Delay</td></tr>
               <tr><th>Blue Sphere+</th><td>ATS/ADF +60, SPD +10</td><td>Burn, Confuse, Deathblow</td></tr>
               <tr><th>Green Sphere+</th><td>SPD +10, crit/EVA/magic EVA +6%</td><td>Poison, Blind, Sleep</td></tr>
+              <tr><th>Yellow Sphere+</th><td>DEF/ADF +100, SPD +10</td><td>Seal, Mute, Stat down</td></tr>
               <tr><th>Feather Brooch+</th><td>SPD +15, EVA +10%</td><td>Delay</td></tr>
               <tr><th>Victory Headband</th><td>STR/DEF +30, hit +50%, CP gain +30%</td><td>—</td></tr>
               <tr><th>Master Beads X</th><td>STR +120, SPD +15</td><td>Seal, Blind</td></tr>
               <tr><th>Vajra X</th><td>ATS +120, SPD +15</td><td>Mute, Freeze</td></tr>
+              <tr><th>Glam Choker+</th><td>ATS +30, SPD +5</td><td>Mute</td></tr>
+              <tr><th>Pearl Earrings+</th><td>STR +30, SPD +5</td><td>Seal</td></tr>
+              <tr><th>Skull Pendant+</th><td>Max HP +2000, SPD +5</td><td>Deathblow</td></tr>
               <tr><th>Black Bangle+</th><td>SPD +9, MOV +6</td><td>Sleep</td></tr>
               <tr><th>Lily Necklace+</th><td>SPD +5, magic EVA +10%</td><td>Confuse</td></tr>
             </tbody>
           </table>
         </div>
-        <p class="quiet">Stats are from a Japanese guide; names are from the game's English item table.</p>
-      </details>
-    </section>
-
-    <section class="card spoiler" id="boss" aria-labelledby="boss-h">
-      <h2 id="boss-h">Boss prep</h2>
-      <details>
-        <summary>Show Chapter 4 boss prep <span class="tag tag-warn">light spoilers, this chapter only</span></summary>
-        <p>The fights in <strong>Mistwald</strong> inflict <strong>Sleep</strong> and <strong>Confusion</strong>. The default accessories only protect Kloe from Confusion.</p>
-        <p>You already own what you need, so this costs nothing: 4 Lily Necklace+ (Confuse 100%), 1 Black Bangle+ (Sleep 100%) and 1 plain Black Bangle (Sleep 75%) are in your bag.</p>
-        <div class="table-scroll">
-          <table class="plain">
-            <thead><tr><th>Character</th><th>Keep</th><th>Swap in for these fights</th></tr></thead>
-            <tbody>
-              <tr><th>Kloe</th><td>Blue Sphere+</td><td><strong>Black Bangle+</strong> — immune to both, she cleans up with La Curia</td></tr>
-              <tr><th>Estelle</th><td>Force Seal+</td><td><strong>Lily Necklace+</strong> — a confused hitter attacks the party</td></tr>
-              <tr><th>Zin</th><td>Master Beads X</td><td><strong>Lily Necklace+</strong></td></tr>
-              <tr><th>Scherazard</th><td>Vajra X</td><td><strong>Lily Necklace+</strong>, or the plain Black Bangle if Sleep hurts more</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <ul class="notes">
-          <li>You have a spare Green Sphere. Upgraded to Green Sphere+ (3 U-Material) it blocks Sleep 100%, but you are down to 1 U-Material.</li>
-          <li>One enemy there takes only physical damage and another takes only Arts.</li>
-          <li>When the boss makes copies, hit only the one that casts a shadow. Hitting a copy damages your party.</li>
-          <li>Put the default accessories back afterwards.</li>
-        </ul>
-      </details>
-    </section>
-
-    <section class="card" id="plan" aria-labelledby="plan-h">
-      <h2 id="plan-h">Battle plan</h2>
-      <div class="two-col">
-        <div>
-          <h3>Boss opener</h3>
-          <ol class="steps">
-            <li><strong>Estelle</strong> → Morale EX</li>
-            <li><strong>Zin</strong> → self STR/DEF buff</li>
-            <li><strong>Kloe</strong> → Kaempfer β if its debuff lands, otherwise Chaos Brand or a weakness Art</li>
-            <li><strong>Schera</strong> → Heaven's Kiss when it catches most of the party</li>
-          </ol>
-        </div>
-        <div>
-          <h3>After that</h3>
-          <ul class="priority">
-            <li><strong>Schera</strong> Heaven's Kiss › Orbal Down when the boss is casting › Aero Storm / weakness Arts</li>
-            <li><strong>Kloe</strong> emergency heal › debuff › weakness Arts. Save her S-Break for emergencies.</li>
-            <li><strong>Zin</strong> self-buff › Taunt as needed › physical Crafts</li>
-            <li><strong>Estelle</strong> keep Morale up › Earth Guard on Zin › interrupt › damage</li>
-          </ul>
-        </div>
-      </div>
-      <p class="quiet">Whether a given boss resists Orbal Down or Chaos Brand is untested.</p>
-    </section>
-
-    <section class="card" aria-labelledby="bench-h">
-      <h2 id="bench-h">Bench</h2>
-      <p><strong>Tita</strong> — keep her status build as it is (not re-checked this version).</p>
-      <ul class="notes">
-        <li>Center (Space only): Mute · Top (Space only): Hit 3</li>
-        <li>Line 1 outer: Confuse</li>
-        <li>Line 2 whites: Action 3 / Sleep</li>
-        <li>Line 3: Seal / Attack 3</li>
-      </ul>
-      <p class="quiet">Agate's upper-right slot is empty (his Action 3 went to Kloe). Only matters if you bring him back.</p>
-      <p class="quiet">Weapons equipped in your save: Ceramic Rod+ (Estelle), Eclair+ (Schera), Vierge+ (Kloe), Knuckle Gear+ (Zin).</p>
-    </section>
-
-    <section class="card" aria-labelledby="why-h">
-      <h2 id="why-h">Notes</h2>
-      <details>
-        <summary>Why Bastion is on Zin and not Kloe</summary>
-        <p>The Japanese guide this build started from puts Bastion in Kloe's white slot in place of EP 3. Checked against the Arts table that matches the game:</p>
-        <div class="table-scroll">
-          <table class="plain">
-            <thead><tr><th></th><th>EP 4 in the slot (this build)</th><th>Bastion in the slot (guide)</th></tr></thead>
-            <tbody>
-              <tr><th>Max EP</th><td>+40%</td><td>none</td></tr>
-              <tr><th>Tearal, Tear-All</th><td>yes</td><td>lost</td></tr>
-              <tr><th>Lost Mobius, White Gehenna, Silver Thorn, Sylphen Wing, Chaos Brand</th><td>yes</td><td>lost</td></tr>
-              <tr><th>Atlas Hammer, Titanic Roar</th><td>no</td><td>yes</td></tr>
-              <tr><th>Shields on Kloe ×3</th><td>no</td><td>yes</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p>The guide says Bastion is what enables Earth Wall on her line. It is not: Earth Wall needs Earth 4 / Space 3 and Mercy already supplies the Earth. This is a calculation, not a guide's recommendation. To follow the guide instead, put Bastion in Kloe's lower-left slot and EP 4 in Schera's bottom slot.</p>
+        <p class="quiet">Stats are from a Japanese guide; names are from the game's English item table. Un-upgraded versions block at 75%.</p>
       </details>
       <details>
         <summary>What is verified, and how</summary>
@@ -235,26 +128,23 @@
           <table class="plain">
             <thead><tr><th>Claim</th><th>Checked against</th></tr></thead>
             <tbody>
-              <tr><th>What you own and have slotted</th><td>Read directly from the save file</td></tr>
-              <tr><th>Slot locks and line layouts</th><td>The game's own orbment table, and in-game screenshots. All four characters match.</td></tr>
-              <tr><th>Quartz elemental values and colours</th><td>The game's own orbment table. All 26 quartz on this page match it.</td></tr>
-              <tr><th>English names</th><td>The game's own English item table</td></tr>
-              <tr><th>Art requirements</th><td>Kago's Arts table; its numbers and EP costs match the Arts in the screenshots</td></tr>
-              <tr><th>Quartz locations</th><td>Kago chest list and Kamigame quartz list agree</td></tr>
-              <tr><th>Bastion = 45 reported quests</th><td>Kamigame</td></tr>
-              <tr><th>Accessory stats</th><td>Kamigame accessory list</td></tr>
-              <tr><th>Boss statuses and mechanics</th><td>Kamigame Chapter 4 walkthrough</td></tr>
-              <tr><th>Party choice</th><td>Kamigame, GameUpX, Silver Intention</td></tr>
+              <tr><th>Chapter, party, what you own and have slotted</th><td>Read directly from the save file</td></tr>
+              <tr><th>Line paths and slot locks</th><td>The game's own orbment table, generated per character. The four in-game screenshots match it.</td></tr>
+              <tr><th>Quartz colours and elemental values</th><td>The game's own quartz table</td></tr>
+              <tr><th>Which Arts a layout gives</th><td>Computed from the game's own Arts table</td></tr>
+              <tr><th>English names</th><td>The game's own English tables</td></tr>
+              <tr><th>Quartz locations</th><td>Kago chest lists and Kamigame's quartz list agree</td></tr>
+              <tr><th>Accessory stats and higher-rank quartz effects</th><td>Kamigame lists</td></tr>
+              <tr><th>Party rules and boss mechanics</th><td>Kamigame and Silver Intention walkthroughs</td></tr>
             </tbody>
           </table>
         </div>
         <p>Known source errors, so they are not reintroduced:</p>
         <ul class="notes">
           <li>Silver Intention's Arts table lists Time for the Tear line. The game uses Mirage.</li>
-          <li>Kago lists Jade Guard as Wind 2 and Topaz Guard as Earth 2. The game shows Wind 3 and Earth 3.</li>
-          <li>Silver Intention's Estelle line order loses Thelas.</li>
-          <li>Earlier versions listed “Divine Cross” on Schera. The English name is Divine Cloth, and you do not own one.</li>
-          <li>“Black Bangle X” is called Black Bangle+ in the English version.</li>
+          <li>Kago lists Jade Guard as Wind 2 and Topaz Guard as Earth 2. The game has Wind 3 and Earth 3.</li>
+          <li>Earlier versions listed “Divine Cross” and “Black Bangle X”. The English names are Divine Cloth and Black Bangle+.</li>
+          <li>Earlier versions said “Elize Turnpike”. The game calls it Elize Highway.</li>
         </ul>
         <p>Not verified: accessory stat numbers (guide only), and whether specific bosses resist specific debuffs.</p>
       </details>
@@ -262,53 +152,38 @@
         <summary>Sources <span class="tag tag-warn">these sites spoil later chapters</span></summary>
         <p class="quiet">Japanese guide sites. Their menus, sidebars and full lists cover the whole game, so opening them risks spoilers.</p>
         <ul class="notes">
-          <li><a rel="noopener" href="https://silver-intention.com/sora_2nd/training-4/">Silver Intention — Chapter 4 builds</a></li>
-          <li><a rel="noopener" href="https://kago.jara-blog.com/sora2nd_arts_list">Kago — Arts table</a></li>
-          <li><a rel="noopener" href="https://kago.jara-blog.com/sora2nd_quartz">Kago — quartz table</a></li>
-          <li><a rel="noopener" href="https://kago.jara-blog.com/sora2nd_takarabako_4">Kago — Chapter 4 chests</a></li>
-          <li><a rel="noopener" href="https://kamigame.jp/soranokiseki2nd/page/440493860418806778.html">Kamigame — Chapter 4 walkthrough</a></li>
-          <li><a rel="noopener" href="https://kamigame.jp/soranokiseki2nd/page/441723156613323316.html">Kamigame — quartz list</a></li>
-          <li><a rel="noopener" href="https://kamigame.jp/soranokiseki2nd/page/441693926810730890.html">Kamigame — accessory list</a></li>
+          <li><a rel="noopener" href="https://kamigame.jp/soranokiseki2nd/index.html">Kamigame</a> — walkthroughs, quartz and accessory lists</li>
+          <li><a rel="noopener" href="https://kago.jara-blog.com/sora2nd_quartz">Kago</a> — chest lists, quartz and Arts tables</li>
+          <li><a rel="noopener" href="https://silver-intention.com/sora_2nd/">Silver Intention</a> — walkthroughs and per-chapter builds</li>
         </ul>
       </details>
       <details>
         <summary>Change log</summary>
+        <h3>v18 — 2026-10-05</h3>
+        <ul class="notes">
+          <li>Chapters. Notes for every remaining chapter are written and sealed; the live page opens each one when your save reaches it, and the published page asks before opening the next.</li>
+          <li>The party is read from the save. Cards follow who is actually in your party, with reserve builds kept below.</li>
+          <li>Orbment lines now follow the real path from the center outwards, taken from the game's own table.</li>
+          <li>Arts for each layout are computed from the game's Arts table.</li>
+          <li>The upgrade list counts copies, so it works once rank 4 quartz can be synthesized.</li>
+          <li>New design.</li>
+        </ul>
         <h3>v17 — 2026-10-05</h3>
         <ul class="notes">
-          <li>Live mode: run the local server and the page follows your save by itself. Slots and accessories show a tick when they already match, the find list ticks itself, and the to-do list is worked out from the save, including where each missing quartz is.</li>
-          <li>The published page keeps working without the server, with manual ticks.</li>
+          <li>Live mode: run the local server and the page follows your save by itself.</li>
         </ul>
         <h3>v16 — 2026-10-05</h3>
         <ul class="notes">
-          <li>Synced to the actual save file: slots, gear, accessories and bag contents.</li>
-          <li>Slot locks and all quartz values checked against the game's own data. Zin's Top slot is white and Bastion fits his center.</li>
-          <li>Accessories corrected to what you own. Removed “Divine Cross” (not owned; real name Divine Cloth).</li>
-          <li>Boss prep now uses accessories already in your bag.</li>
-          <li>Do-now list shortened to the two steps still open, both on Schera.</li>
+          <li>Synced to the actual save file. Slot locks and quartz values checked against the game's own data.</li>
+          <li>Accessories corrected to what you own. Boss prep uses accessories already in your bag.</li>
         </ul>
-        <h3>v15 — 2026-10-05</h3>
+        <h3>v15 and earlier</h3>
         <ul class="notes">
-          <li>Moved from a Markdown file to this page. Diagrams and Value rows are computed from the build data.</li>
-          <li>Find-and-slot checklist updates the diagrams.</li>
-          <li>Boss prep and source links are hidden by default to avoid spoilers.</li>
-        </ul>
-        <h3>v14 — 2026-10-05</h3>
-        <ul class="notes">
-          <li>Slot locks read from screenshots: Estelle none, Schera Wind ×2, Kloe Water ×2, Zin Earth ×2.</li>
-          <li>Every line's Arts recomputed from a table that matches the game.</li>
-          <li>Nothing is benched: Attack 4 → Zin, Shield 4 → Schera, EP 4 → Kloe.</li>
-          <li>Bastion moved from Kloe to Zin's center. Kloe keeps EP 3 / EP 4, which keeps Tearal and Tear-All.</li>
-          <li>Action 4 moves from Estelle to Schera.</li>
-          <li>Estelle keeps her current line order.</li>
-          <li>Added Mistwald boss prep and quartz locations. Corrected Divine Cross to HP +1000.</li>
-        </ul>
-        <h3>v13 and earlier</h3>
-        <ul class="notes">
-          <li>Accessories restored, English names only, Kloe board verified, Chapter 4 party and rank-4 priorities, Tita's status build preserved.</li>
+          <li>Moved from a Markdown file to this page; slot locks read from screenshots; Bastion moved from Kloe to Zin; Action 4 moved from Estelle to Schera.</li>
         </ul>
       </details>
+      <p class="quiet foot-meta"><span id="meta-version"></span></p>
     </section>
-
   </main>
 
   <footer class="wrap foot">
@@ -316,6 +191,7 @@
   </footer>
 
   <script src="data.js"></script>
+  <script src="game-data.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

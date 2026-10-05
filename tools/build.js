@@ -1,0 +1,195 @@
+#!/usr/bin/env node
+// Builds the page's data from the chapter notes and the game's own tables.
+//
+//   node tools/build.js            chapters-src/chN.js  ->  chapters/chN.dat, and game-data.js
+//   node tools/build.js --report 5 also print chapter 5's lines, values and Arts per character
+//   node tools/build.js --unseal   recreate chapters-src/ from chapters/*.dat (fresh clone)
+//
+// Chapter files are "sealed" (base64) so that browsing the repo, a diff or a search does not
+// spoil a chapter you have not reached. The page opens only the chapter the save is in.
+// chapters-src/ holds the readable originals and is not committed.
+//
+// For every character the tool takes the line layout and slot locks from the game's orbment
+// table, and every quartz colour and elemental value from the game's quartz table, then checks
+// the notes against them: unknown names, a quartz in a slot it cannot go in, or two of the same
+// kind on one orbment stop the build.
+
+'use strict';
+const fs = require('fs');
+const path = require('path');
+const { loadGame, loadTable, ELEMENTS, SLOT_ORDER } = require('./read-save.js');
+
+const ROOT = path.join(__dirname, '..');
+const SRC = path.join(ROOT, 'chapters-src');
+const OUT = path.join(ROOT, 'chapters');
+const args = process.argv.slice(2);
+
+function seal(obj) { return Buffer.from(JSON.stringify(obj), 'utf8').toString('base64'); }
+function unseal(text) { return JSON.parse(Buffer.from(text, 'base64').toString('utf8')); }
+
+if (args.includes('--unseal')) {
+  fs.mkdirSync(SRC, { recursive: true });
+  const fx = {};
+  for (const f of fs.readdirSync(OUT).filter((x) => /^ch\d+\.dat$/.test(x))) {
+    const target = path.join(SRC, f.replace('.dat', '.js'));
+    const ch = unseal(fs.readFileSync(path.join(OUT, f), 'utf8'));
+    for (const name of Object.keys(ch.quartz)) if (ch.quartz[name].fx) fx[name] = ch.quartz[name].fx;
+    if (fs.existsSync(target)) { console.log('kept   ' + target); continue; }
+    fs.writeFileSync(target, '// Recreated from ' + f + '. Spoilers for this chapter.\nmodule.exports = ' + JSON.stringify(ch.source, null, 2) + ';\n');
+    console.log('wrote  ' + target);
+  }
+  const fxFile = path.join(SRC, '_fx.js');
+  if (!fs.existsSync(fxFile)) {
+    fs.writeFileSync(fxFile, '// Short effect text per quartz. Recreated from the sealed chapters.\nmodule.exports = ' + JSON.stringify(fx, null, 2) + ';\n');
+    console.log('wrote  ' + fxFile);
+  }
+  process.exit(0);
+}
+
+// ---- game data ---------------------------------------------------------------
+const game = loadGame();
+const idByName = new Map();
+for (const [id, name] of game.items) if (!idByName.has(name)) idByName.set(name, id);
+const cidById = new Map();
+for (const [cid, p] of game.people) cidById.set(p.id, cid);
+
+const orb = loadTable('t_orbment.tbl');
+const quartzValues = new Map(); // item id -> { element: n }
+for (const e of orb.rows('QuartzParam')) {
+  const v = {};
+  ELEMENTS.forEach((el, k) => { const x = orb.b[e + 32 + k]; if (x) v[el] = x; });
+  quartzValues.set(orb.b.readUInt16LE(e), v);
+}
+const colourOf = (id) => ELEMENTS[Math.floor(id / 100) - 37];
+const familyOf = (id) => Math.floor(id / 10);
+
+const skill = loadTable('t_skill.tbl');
+const skillName = new Map();
+for (const e of skill.rows('SkillParam')) {
+  const id = skill.b.readUInt16LE(e);
+  if (!skillName.has(id)) skillName.set(id, skill.str(skill.b.readUInt32LE(e + 0x98)).trim());
+}
+const artElement = (id) => (id < 115 ? 'earth' : id < 135 ? 'water' : id < 150 ? 'fire' : id < 165 ? 'wind' : id < 180 ? 'time' : id < 195 ? 'space' : 'mirage');
+const arts = [];
+for (const e of orb.rows('ArtsParam')) {
+  const id = orb.b.readUInt32LE(e);
+  const req = {};
+  ELEMENTS.forEach((el, k) => { const x = orb.b[e + 4 + k]; if (x) req[el] = x; });
+  if (skillName.get(id)) arts.push({ name: skillName.get(id), el: artElement(id), req });
+}
+
+// ---- chapters ----------------------------------------------------------------
+const FX = require(path.join(SRC, '_fx.js'));
+const problems = [];
+
+function quartzInfo(name, where) {
+  const id = idByName.get(name);
+  if (id == null || !quartzValues.has(id)) { problems.push(where + ': "' + name + '" is not a quartz in the game table'); return null; }
+  return { id, el: colourOf(id), v: quartzValues.get(id), fx: FX[name] || '' };
+}
+
+function buildChapter(src) {
+  const quartz = {};
+  const use = (name, where) => {
+    const q = quartzInfo(name, where);
+    if (q) quartz[name] = { el: q.el, v: q.v, fx: q.fx };
+    return q;
+  };
+  const characters = src.characters.map((c) => {
+    const cid = cidById.get(c.id);
+    const where = 'ch' + src.n + ' ' + c.id;
+    if (cid == null) { problems.push(where + ': unknown character id'); return null; }
+    const lay = game.layouts.get(cid);
+    const slots = {};
+    const families = new Map();
+    for (const k of SLOT_ORDER) {
+      const raw = c.slots[k];
+      if (!raw) { problems.push(where + ': slot ' + k + ' has no quartz'); continue; }
+      const t = Array.isArray(raw) ? raw[0] : raw;
+      const u = Array.isArray(raw) ? raw[1] : null;
+      slots[k] = u ? { t, u } : { t };
+      for (const name of [t, u]) {
+        if (!name) continue;
+        const q = use(name, where + ' ' + k);
+        if (!q) continue;
+        if (lay.locks[k] && q.el !== lay.locks[k]) problems.push(where + ': ' + name + ' (' + q.el + ') cannot go in the ' + lay.locks[k] + '-locked slot ' + k);
+      }
+      const tq = idByName.get(t);
+      if (tq != null) {
+        if (families.has(familyOf(tq))) problems.push(where + ': ' + t + ' and ' + families.get(familyOf(tq)) + ' are the same kind of quartz');
+        families.set(familyOf(tq), t);
+      }
+    }
+    for (const a of c.accessories || []) if (!idByName.has(a)) problems.push(where + ': accessory "' + a + '" is not in the game table');
+    return {
+      id: c.id, name: game.people.get(cid).name, role: c.role || '',
+      lines: lay.lines, locks: lay.locks, slots,
+      accessories: c.accessories || [], notes: c.notes || []
+    };
+  }).filter(Boolean);
+  for (const name of Object.keys(src.sources || {})) use(name, 'ch' + src.n + ' sources');
+  for (const id of (src.party && src.party.pick) || []) {
+    if (!characters.some((c) => c.id === id)) problems.push('ch' + src.n + ': party.pick has ' + id + ' but there is no build for them');
+  }
+  return {
+    n: src.n, title: src.title, region: src.region || '', intro: src.intro || [],
+    party: src.party || {}, sources: src.sources || {}, quartz, characters,
+    sections: src.sections || [], source: src
+  };
+}
+
+// values of one line, and the Arts a character gets, at the target build
+function lineSum(ch, c, line) {
+  const sum = {};
+  ELEMENTS.forEach((e) => { sum[e] = 0; });
+  for (const k of line) { const v = ch.quartz[c.slots[k].t].v; for (const e of Object.keys(v)) sum[e] += v[e]; }
+  return sum;
+}
+function artsFor(ch, c) {
+  const sums = c.lines.map((l) => lineSum(ch, c, l));
+  return arts.filter((a) => sums.some((s) => Object.keys(a.req).every((e) => s[e] >= a.req[e]))).map((a) => a.name);
+}
+
+const files = fs.readdirSync(SRC).filter((f) => /^ch\d+\.js$/.test(f)).sort((a, b) => parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10));
+const built = files.map((f) => buildChapter(require(path.join(SRC, f))));
+
+if (problems.length) {
+  console.error('Not written. Fix these first:\n  ' + problems.join('\n  '));
+  process.exit(1);
+}
+
+// every quartz in the game: name -> [colour, values in element order]. Lets the page draw and
+// add up whatever is actually slotted, not only what the notes mention.
+const allQuartz = {};
+for (const [id, v] of quartzValues) {
+  const name = game.items.get(id);
+  if (name) allQuartz[name] = [colourOf(id), ELEMENTS.map((e) => v[e] || 0)];
+}
+
+fs.mkdirSync(OUT, { recursive: true });
+for (const ch of built) {
+  fs.writeFileSync(path.join(OUT, 'ch' + ch.n + '.dat'), seal(ch));
+  console.log('ch' + ch.n + '.dat  ' + ch.characters.map((c) => c.name).join(', '));
+}
+fs.writeFileSync(path.join(ROOT, 'game-data.js'),
+  '// Generated by tools/build.js from the game’s own tables. Do not edit.\n' +
+  '// Sealed like the chapter files, because it lists every quartz in the game by name.\n' +
+  'window.GAME = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob("' +
+  seal({ chapters: built.map((c) => c.n), arts, quartz: allQuartz }) +
+  '"), function (c) { return c.charCodeAt(0); })));\n');
+console.log('game-data.js  ' + arts.length + ' Arts, chapters ' + built.map((c) => c.n).join(' '));
+
+const r = args.indexOf('--report');
+if (r !== -1) {
+  const ch = built.find((c) => String(c.n) === args[r + 1]);
+  if (!ch) { console.error('no chapter ' + args[r + 1]); process.exit(1); }
+  for (const c of ch.characters) {
+    console.log('\n' + c.name);
+    c.lines.forEach((l, i) => {
+      const s = lineSum(ch, c, l);
+      console.log('  Line ' + (i + 1) + '  ' + l.map((k) => c.slots[k].t).join(' > '));
+      console.log('          ' + ELEMENTS.map((e) => e.slice(0, 2) + ' ' + s[e]).join('  '));
+    });
+    console.log('  Arts: ' + artsFor(ch, c).join(', '));
+  }
+}

@@ -2,7 +2,7 @@
 
 Party build notes for a Trails in the Sky 2nd Chapter (remake) playthrough.
 
-The page covers the current chapter only, and hides boss notes and source links by default to avoid spoilers.
+The page shows **one chapter at a time**. Notes for every later chapter are already written, but they stay sealed until the save reaches that chapter. Boss notes and within-chapter party changes are collapsed by default.
 
 ## Two ways to open it
 
@@ -14,14 +14,22 @@ node server.js --open
 
 This opens http://localhost:8733 and follows your save by itself:
 
+- it reads which chapter you are in and opens that chapter's notes, and only that chapter's
+- it reads who is in your party; cards follow the party, with reserve builds kept below
 - every slot and accessory shows a tick when it already matches the build
-- the find list ticks itself when you pick up a quartz
-- the to-do list is worked out from the save, and says where each missing quartz is (in your bag, on a benched character, or not owned)
-- your spare quartz and accessories are listed
+- the upgrade list counts what you own (bag plus everything slotted) against what the party wants
+- the to-do list says where each missing quartz is: in your bag, on a benched character, or not owned
 
 It updates a few seconds after the game writes a save (the autosave slot is written every few minutes and after menu changes). No reload, no buttons.
 
-**Published.** https://ldallacqua.github.io/trails-sky-2nd-build/ is the same page without the server. It cannot see your save, so you tick things by hand.
+**Published.** https://ldallacqua.github.io/trails-sky-2nd-build/ is the same page without the server. It cannot see your save, so you tick things by hand, and it asks before opening the next chapter.
+
+## Spoilers
+
+- `chapters/chN.dat` are the chapter notes, base64-sealed so that browsing the repo, a diff or a search does not show a chapter you have not reached.
+- The live server refuses to hand out a chapter beyond the one in your save.
+- Characters who are not with you in the save are not shown, even if the chapter notes have a build for them.
+- `chapters-src/` holds the readable originals. It is not committed. `node tools/build.js --unseal` recreates it from the sealed files.
 
 ## How light it is
 
@@ -31,14 +39,14 @@ The server is read-only, listens on 127.0.0.1 only, and has no dependencies. It 
 
 ## Files
 
-- `data.js` holds the build: quartz values, the one-copy quartz checklist, and each character's target slots and accessories. Edit this to change the build.
-- `app.js` draws the orbment diagrams, computes each line's elemental values, and compares the build with the save when the live server is present.
-- `index.html` holds the fixed sections (boss prep, battle plan, notes, change log).
-- `server.js` is the local live-sync server.
-- `tools/read-save.js` reads a save. It also works on its own: `node tools/read-save.js` prints the same data as text.
+- `chapters-src/chN.js` (not committed) is the build for one chapter: party rules, where each quartz comes from, each character's target slots and accessories, boss prep and notes. A slot is either a quartz name or `[target, stand-in until you own it]`. `_lib.js` has the shared build templates.
+- `tools/build.js` turns those into `chapters/chN.dat` and `game-data.js`. It takes every character's line layout and slot locks, every quartz colour and value, and every Art's requirements from the game's own tables, and refuses to build if a note puts a quartz where it cannot go. `--report N` prints chapter N's lines, values and Arts.
+- `app.js` draws the page: it works out what each slot should hold given what is owned, compares that with the save, and computes the Arts each layout gives.
+- `server.js` is the local live-sync server. `tools/read-save.js` reads a save and also works on its own: `node tools/read-save.js`.
+- `data.js` has the version and the chapter the published copy starts on.
 
-Item names are read from the game's files at run time; none of the game's data is stored in this repo. The save offsets were found by inspection, so the reader checks the layout first and stops with an error if a game update moves things.
+Names, chapter titles, layouts and Art requirements are read from the game's files; the save offsets were found by inspection, so the reader checks the layout first and stops with an error if a game update moves things.
 
-Pushing to `main` publishes the page through GitHub Pages. No build step.
+Pushing to `main` publishes the page through GitHub Pages. No build step on the server side; run `node tools/build.js` before committing when the notes change.
 
 Unofficial personal notes; not affiliated with Nihon Falcom or the game's publishers.

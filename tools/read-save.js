@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Reads the newest Trails in the Sky 2nd Chapter save and reports what each character
-// has slotted and equipped, plus spare quartz, accessories and U-Material in the bag.
+// Reads the newest Trails in the Sky 2nd Chapter save and reports the chapter, the party,
+// what each character has slotted and equipped, and the spare quartz, accessories and
+// U-Material in the bag.
 //
 // Read-only: it never writes to the save folder or the game folder.
 // Needs Node 22.15+ (built-in Zstandard). No dependencies.
@@ -11,9 +12,9 @@
 //
 // server.js uses the same functions to keep the page in sync while you play.
 //
-// Item names come from the game's own English table at run time; nothing from the game
-// is stored in this repo. Offsets were worked out against the 2026-10 Steam build and are
-// checked before use, so a game update that moves them fails loudly instead of lying.
+// Names, chapter titles and orbment layouts come from the game's own English tables at run
+// time. Offsets were worked out against the 2026-10 Steam build and are checked before use,
+// so a game update that moves them fails loudly instead of lying.
 
 'use strict';
 const fs = require('fs');
@@ -25,25 +26,18 @@ const GAME_DIR = process.env.SKY2_GAME_DIR || 'C:\\Steam\\steamapps\\common\\Tra
 const SAVE_DIR = process.env.SKY2_SAVE_DIR || path.join(os.homedir(), 'Saved Games', 'Falcom', 'Trails in the Sky 2nd Chapter', 'savedata');
 
 const INV_BASE = 0x128a44;   // per item id: u16 count in the bag, u16 flags
-const REC_FIRST = 0x1147bc;  // first character's orbment block
+const REC_FIRST = 0x1147bc;  // first character record's orbment block
 const REC_SIZE = 0x2a0;
-const STATS_BACK = 0x22c;    // level / HP / EP block sits this far before the orbment block
+const REC_MAX = 16;
+const STATS_BACK = 0x22c;    // char id / level / HP / EP block sits this far before the orbment block
+const CHAPTER_AT = 0x5103c;  // script variable: 0x40000000 | chapter number (0 = prologue)
+const PARTY_AT = 0x51454;    // u16 character ids, 0xffff ends the list; the first four are the active party
+const VAR_TAG = 0x40000000;
 const SLOT_ORDER = ['c', 'll', 'ul', 't', 'ur', 'lr', 'b'];
 const SLOT_NAME = { c: 'Center', ll: 'Lower-left', ul: 'Upper-left', t: 'Top', ur: 'Upper-right', lr: 'Lower-right', b: 'Bottom' };
+const ELEMENTS = ['earth', 'water', 'fire', 'wind', 'time', 'space', 'mirage'];
 const QUARTZ = [3700, 4400];
 const ACCESSORY = [1500, 1700];
-
-// Which record belongs to whom. The order is fixed in the save (seen across saves from
-// different days). Records not listed here are not playable party members right now.
-const WHO = {
-  0: { id: 'estelle', name: 'Estelle' },
-  2: { id: 'schera', name: 'Scherazard' },
-  3: { id: 'olivier', name: 'Olivier' },
-  4: { id: 'kloe', name: 'Kloe' },
-  5: { id: 'tita', name: 'Tita' },
-  6: { id: 'agate', name: 'Agate' },
-  7: { id: 'zin', name: 'Zin' }
-};
 
 // ---- game tables -------------------------------------------------------------
 function readFromPac(pacFile, wantedName) {
@@ -67,24 +61,76 @@ function readFromPac(pacFile, wantedName) {
   throw new Error(wantedName + ' not found in ' + pacFile);
 }
 
-function loadItemNames() {
-  const b = readFromPac(path.join(GAME_DIR, 'pac', 'steam', 'table_en.pac'), '/t_item.tbl');
-  if (b.toString('latin1', 0, 4) !== '#TBL') throw new Error('t_item.tbl has an unexpected format');
-  const sections = b.readUInt32LE(4);
-  for (let i = 0; i < sections; i++) {
+function loadTable(name) {
+  const b = readFromPac(path.join(GAME_DIR, 'pac', 'steam', 'table_en.pac'), '/' + name);
+  if (b.toString('latin1', 0, 4) !== '#TBL') throw new Error(name + ' has an unexpected format');
+  const sections = {};
+  const n = b.readUInt32LE(4);
+  for (let i = 0; i < n; i++) {
     const o = 8 + i * 80;
-    if (b.toString('latin1', o, o + 64).replace(/\0.*$/, '') !== 'ItemTableData') continue;
-    const offset = b.readUInt32LE(o + 68), size = b.readUInt32LE(o + 72), count = b.readUInt32LE(o + 76);
-    const names = new Map();
-    for (let k = 0; k < count; k++) {
-      const e = offset + k * size;
-      const p = b.readUInt32LE(e + 0xe0);
-      let end = p; while (end < b.length && b[end] !== 0) end++;
-      names.set(b.readUInt32LE(e), b.toString('utf8', p, end));
-    }
-    return names;
+    sections[b.toString('latin1', o, o + 64).replace(/\0.*$/, '')] = { offset: b.readUInt32LE(o + 68), size: b.readUInt32LE(o + 72), count: b.readUInt32LE(o + 76) };
   }
-  throw new Error('ItemTableData section not found');
+  const str = (p) => { let e = p; while (e < b.length && b[e] !== 0) e++; return b.toString('utf8', p, e); };
+  const rows = (section) => {
+    const s = sections[section];
+    if (!s) throw new Error(section + ' section not found in ' + name);
+    return Array.from({ length: s.count }, (_, k) => s.offset + k * s.size);
+  };
+  return { b, str, rows };
+}
+
+function loadItemNames() {
+  const t = loadTable('t_item.tbl');
+  const names = new Map();
+  for (const e of t.rows('ItemTableData')) names.set(t.b.readUInt32LE(e), t.str(t.b.readUInt32LE(e + 0xe0)));
+  return names;
+}
+
+// Everything the reader needs from the game, loaded once.
+//   items     id -> English name
+//   people    character id -> { id, name } for everyone who has an orbment
+//   layouts   character id -> { lines: [[slot keys from the center outwards]], locks: { slot: element } }
+//   chapters  chapter number -> title
+function loadGame() {
+  const items = loadItemNames();
+
+  const orb = loadTable('t_orbment.tbl');
+  const layouts = new Map();
+  const seen = new Map(); // character id -> rows so far, which is also the slot's position on the dial
+  for (const e of orb.rows('OrbmentSlotParam')) {
+    const cid = orb.b.readUInt32LE(e);
+    const n = seen.get(cid) || 0;
+    seen.set(cid, n + 1);
+    const key = SLOT_ORDER[n];
+    if (!key) continue;
+    if (!layouts.has(cid)) layouts.set(cid, { chains: {}, locks: {} });
+    const lay = layouts.get(cid);
+    const line = orb.b[e + 4], pos = orb.b[e + 5], lock = orb.b[e + 6];
+    if (lock) lay.locks[key] = ELEMENTS[lock - 1];
+    if (line !== 0xff) (lay.chains[line] = lay.chains[line] || []).push({ key, pos });
+  }
+  for (const [cid, lay] of layouts) {
+    const lines = Object.keys(lay.chains).sort((a, b) => a - b)
+      .map((l) => ['c'].concat(lay.chains[l].sort((a, b) => a.pos - b.pos).map((s) => s.key)));
+    layouts.set(cid, { lines, locks: lay.locks });
+  }
+
+  const nm = loadTable('t_name.tbl');
+  const people = new Map();
+  for (const e of nm.rows('NameTableData')) {
+    const cid = nm.b.readUInt32LE(e);
+    if (!layouts.has(cid) || people.has(cid)) continue;
+    const name = nm.str(nm.b.readUInt32LE(e + 8));
+    people.set(cid, { id: name.toLowerCase().replace(/[^a-z]+/g, ''), name });
+  }
+
+  const ch = loadTable('t_chapter.tbl');
+  const chapters = new Map();
+  for (const e of ch.rows('ChapterParam')) {
+    const n = ch.b.readUInt16LE(e);
+    if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
+  }
+  return { items, people, layouts, chapters };
 }
 
 // ---- save --------------------------------------------------------------------
@@ -109,9 +155,9 @@ function unpack(buf) {
 }
 
 // Reads one savedata file. The file is read in a single call and never held open.
-function readSaveFile(file, names) {
+function readSaveFile(file, game) {
   const b = unpack(fs.readFileSync(file));
-  const nm = (id) => (id === 0 ? null : (names.get(id) || '#' + id));
+  const nm = (id) => (id === 0 ? null : (game.items.get(id) || '#' + id));
   const isQuartz = (v) => v === 0 || (v >= QUARTZ[0] && v < QUARTZ[1]);
 
   // sanity check: the first record must look like an orbment block
@@ -120,33 +166,61 @@ function readSaveFile(file, names) {
     throw new Error('save layout not recognised (game updated?). Offsets in tools/read-save.js need re-finding.');
   }
 
+  // Each record carries its own character id; records are not stored in id order.
   const characters = {};
-  for (const [index, who] of Object.entries(WHO)) {
-    const o = REC_FIRST + Number(index) * REC_SIZE;
-    const q = SLOT_ORDER.map((_, k) => b.readUInt32LE(o + k * 4));
-    if (!q.every(isQuartz)) throw new Error('save layout not recognised at ' + who.name + "'s record.");
-    const gear = [14, 15, 16, 17, 18].map((k) => nm(b.readUInt32LE(o + k * 4)));
+  const idOf = new Map();
+  for (let index = 0; index < REC_MAX; index++) {
+    const o = REC_FIRST + index * REC_SIZE;
     const s = o - STATS_BACK;
+    const cid = b.readUInt32LE(s);
+    const who = game.people.get(cid);
+    const level = b.readUInt32LE(s + 4);
+    if (!who || idOf.has(cid) || level === 0 || level > 200) continue;
+    const q = SLOT_ORDER.map((_, k) => b.readUInt32LE(o + k * 4));
+    if (!q.every(isQuartz)) continue;
+    const gear = [14, 15, 16, 17, 18].map((k) => nm(b.readUInt32LE(o + k * 4)));
+    const lay = game.layouts.get(cid);
+    idOf.set(cid, who.id);
     characters[who.id] = {
-      name: who.name,
-      level: b.readUInt32LE(s + 4), hp: b.readUInt32LE(s + 12), ep: b.readUInt32LE(s + 20),
+      id: who.id, name: who.name, level,
+      hp: b.readUInt32LE(s + 16), ep: b.readUInt32LE(s + 24),
       slots: Object.fromEntries(SLOT_ORDER.map((k, n) => [k, nm(q[n])])),
+      lines: lay.lines, locks: lay.locks,
       weapon: gear[0], armor: gear[1], shoes: gear[2], accessories: [gear[3], gear[4]]
     };
   }
+  if (!characters.estelle) throw new Error('save layout not recognised: Estelle\u2019s record was not found.');
+
+  // party order: the first four are in the active party, the rest are in reserve
+  const party = [];
+  for (let k = 0; k < 16; k++) {
+    const cid = b.readUInt16LE(PARTY_AT + k * 2);
+    if (cid === 0xffff) break;
+    if (idOf.has(cid) && party.indexOf(idOf.get(cid)) === -1) party.push(idOf.get(cid));
+  }
+  // Records exist for people who are not with you right now. Leave them out, so nothing
+  // downstream can show a character before the story does.
+  for (const id of Object.keys(characters)) if (party.indexOf(id) === -1) delete characters[id];
+
+  let chapter = null;
+  const raw = b.readUInt32LE(CHAPTER_AT);
+  if ((raw & 0xf0000000) === VAR_TAG && game.chapters.has(raw & 0xffff)) {
+    const n = raw & 0xffff;
+    chapter = { n, title: game.chapters.get(n) };
+  }
 
   const bag = { quartz: [], accessories: [], uMaterial: 0 };
-  for (const [id, name] of names) {
+  for (const [id, name] of game.items) {
     const count = b.readUInt16LE(INV_BASE + id * 4);
     if (!count) continue;
     if (id >= QUARTZ[0] && id < QUARTZ[1]) bag.quartz.push({ name, count });
     else if (id >= ACCESSORY[0] && id < ACCESSORY[1]) bag.accessories.push({ name, count });
     else if (name === 'U-Material') bag.uMaterial = count;
   }
-  return { characters, bag };
+  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag };
 }
 
-module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, loadItemNames, newestSave, readSaveFile };
+module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, loadTable, loadItemNames, loadGame, newestSave, readSaveFile };
 
 // ---- command line ------------------------------------------------------------
 function main() {
@@ -154,17 +228,21 @@ function main() {
   const json = args.includes('--json');
   const fileArg = args.find((a) => !a.startsWith('--'));
   const src = fileArg ? { f: fileArg, t: fs.statSync(fileArg).mtimeMs, slot: path.basename(path.dirname(fileArg)) } : newestSave();
-  const data = readSaveFile(src.f, loadItemNames());
+  const data = readSaveFile(src.f, loadGame());
   data.save = { slot: src.slot, written: new Date(src.t).toISOString() };
 
   if (json) { console.log(JSON.stringify(data, null, 1)); return; }
 
-  console.log('Save: ' + src.slot + ', written ' + new Date(src.t).toLocaleString() + '\n');
+  console.log('Save: ' + src.slot + ', written ' + new Date(src.t).toLocaleString());
+  console.log('Chapter: ' + (data.chapter ? data.chapter.title : 'not recognised'));
+  const nameOf = (id) => data.characters[id].name;
+  console.log('Party: ' + data.party.map(nameOf).join(', ') + (data.reserve.length ? '   Reserve: ' + data.reserve.map(nameOf).join(', ') : '') + '\n');
   for (const c of Object.values(data.characters)) {
-    console.log(c.name);
+    console.log(c.name + '  (Lv ' + c.level + ', HP ' + c.hp + ', EP ' + c.ep + ')');
     for (const k of ['t', 'ul', 'ur', 'c', 'll', 'lr', 'b']) {
-      console.log('   ' + SLOT_NAME[k].padEnd(12) + (c.slots[k] || '(empty)'));
+      console.log('   ' + SLOT_NAME[k].padEnd(12) + (c.slots[k] || '(empty)') + (c.locks[k] ? '   [' + c.locks[k] + ' only]' : ''));
     }
+    console.log('   Lines       ' + c.lines.map((l) => l.join('>')).join('   '));
     console.log('   Gear        ' + [c.weapon, c.armor, c.shoes].map((x) => x || '(none)').join(' / '));
     console.log('   Accessories ' + c.accessories.map((x) => x || '(none)').join(' + ') + '\n');
   }

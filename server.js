@@ -10,6 +10,8 @@
 // unpacked when its timestamp or size changes, which is whenever the game writes a save.
 // The page is told about changes over a single kept-open connection, so it does not poll.
 //
+// Spoiler gate: chapter notes are only served up to the chapter the save is in.
+//
 // Read-only, local only (127.0.0.1), no dependencies. Needs Node 22.15+.
 
 'use strict';
@@ -17,18 +19,21 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
-const { loadItemNames, newestSave, readSaveFile, SAVE_DIR } = require('./tools/read-save.js');
+const { loadGame, newestSave, readSaveFile, SAVE_DIR } = require('./tools/read-save.js');
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf('--' + name); return i !== -1 && args[i + 1] ? Number(args[i + 1]) : fallback; };
 const PORT = opt('port', 8733);
 const INTERVAL = Math.max(1, opt('interval', 3));
 const ROOT = __dirname;
-const STATIC = { '/': 'index.html', '/index.html': 'index.html', '/styles.css': 'styles.css', '/app.js': 'app.js', '/data.js': 'data.js' };
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
+const STATIC = {
+  '/': 'index.html', '/index.html': 'index.html', '/styles.css': 'styles.css',
+  '/app.js': 'app.js', '/data.js': 'data.js', '/game-data.js': 'game-data.js'
+};
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.dat': 'text/plain; charset=utf-8' };
 
-let names;
-try { names = loadItemNames(); } catch (e) { console.error('Could not read the game tables: ' + e.message); process.exit(1); }
+let game;
+try { game = loadGame(); } catch (e) { console.error('Could not read the game tables: ' + e.message); process.exit(1); }
 
 let current = null;      // last good read
 let currentKey = '';     // slot + mtime + size of the save that produced it
@@ -43,17 +48,26 @@ function tick() {
     newest = newestSave();
     const key = newest.slot + ':' + newest.t + ':' + newest.size;
     if (key === currentKey) return;
-    const data = readSaveFile(newest.f, names); // throws if the game is mid-write; retried next tick
+    const data = readSaveFile(newest.f, game); // throws if the game is mid-write; retried next tick
     data.save = { slot: newest.slot, written: new Date(newest.t).toISOString() };
     data.interval = INTERVAL;
     current = data;
     currentKey = key;
     lastProblem = '';
-    console.log(new Date().toLocaleTimeString() + '  read ' + newest.slot + ' (saved ' + new Date(newest.t).toLocaleTimeString() + ')');
+    console.log(new Date().toLocaleTimeString() + '  read ' + newest.slot + ' (saved ' + new Date(newest.t).toLocaleTimeString() + ')' +
+      (data.chapter ? '  ' + data.chapter.title : ''));
     for (const res of clients) send(res, current);
   } catch (e) {
     if (e.message !== lastProblem) { lastProblem = e.message; console.log(new Date().toLocaleTimeString() + '  waiting: ' + e.message); }
   }
+}
+
+function serveFile(res, file) {
+  fs.readFile(path.join(ROOT, file), (err, body) => {
+    if (err) { res.writeHead(404); res.end('Not found'); return; }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)], 'Cache-Control': 'no-store' });
+    res.end(body);
+  });
 }
 
 const server = http.createServer((req, res) => {
@@ -77,13 +91,17 @@ const server = http.createServer((req, res) => {
     req.on('close', () => clients.delete(res));
     return;
   }
+  const chapter = /^\/chapters\/ch(\d+)\.dat$/.exec(url);
+  if (chapter) {
+    // Notes for a chapter the save has not reached are not handed out.
+    const reached = current && current.chapter ? current.chapter.n : -1;
+    if (Number(chapter[1]) > reached) { res.writeHead(403); res.end('Not reached yet'); return; }
+    serveFile(res, path.join('chapters', 'ch' + Number(chapter[1]) + '.dat'));
+    return;
+  }
   const file = STATIC[url];
   if (!file) { res.writeHead(404); res.end('Not found'); return; }
-  fs.readFile(path.join(ROOT, file), (err, body) => {
-    if (err) { res.writeHead(500); res.end(); return; }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)], 'Cache-Control': 'no-store' });
-    res.end(body);
-  });
+  serveFile(res, file);
 });
 
 server.on('error', (e) => {
