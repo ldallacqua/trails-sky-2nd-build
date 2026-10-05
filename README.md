@@ -13,6 +13,14 @@ The page covers the current chapter only, and hides boss notes and source links 
 - `index.html` holds the fixed sections (accessories, boss prep, battle plan, notes, change log).
 - `styles.css` is the styling.
 
+- `tools/read-save.js` reads the newest save (read-only) and prints each character's slots, gear and accessories plus the spare quartz and accessories in the bag. Use it to sync `data.js` with the real game state:
+
+```bash
+node tools/read-save.js
+```
+
+It needs Node 22.15 or newer and the Steam version of the game installed. Set `SKY2_GAME_DIR` or `SKY2_SAVE_DIR` if your paths differ. Item names are read from the game's files at run time; none of the game's data is stored in this repo.
+
 Pushing to `main` publishes the page through GitHub Pages. No build step.
 
 To preview locally:

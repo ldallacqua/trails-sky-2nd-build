@@ -2,7 +2,7 @@
 // Elemental values come from the in-game Value box (screenshots) and Kago's quartz table.
 
 window.BUILD = {
-  version: 'v15',
+  version: 'v16',
   updated: '2026-10-05',
   chapter: 'Chapter 4 — Rolent',
 
@@ -50,7 +50,7 @@ window.BUILD = {
 
   // Slot keys: c, t, ur, lr, b, ll, ul.
   // target = what to slot. needs/until = a one-copy quartz and what sits there before you own it.
-  // shot = what the last screenshot showed (omit when it already matched). lock = slot colour.
+  // shot = what the last save read showed, when it differs from what should be there now. lock = slot colour.
   characters: [
     {
       id: 'estelle', name: 'Estelle', role: 'Buffer, item healer, interrupter',
@@ -58,7 +58,7 @@ window.BUILD = {
       slots: {
         c:  { target: 'Breeze' },
         t:  { target: 'HP 3' },
-        ul: { target: 'Action 3', shot: 'Action 4' },
+        ul: { target: 'Action 3' },
         ur: { target: 'Golden Guard' },
         ll: { target: 'Defense 3' },
         lr: { target: 'Impede 3' },
@@ -70,7 +70,7 @@ window.BUILD = {
         { label: 'Support', list: 'Earth Guard (shield), Saint' }
       ],
       notes: [
-        'Dropping to Action 3 loses no Art and about 2 SPD. Schera does more with Action 4.',
+        'Action 3 here loses no Art and about 2 SPD compared with Action 4. Schera does more with Action 4.',
         'Keep Golden Guard and Hit 3 on the same line. Space 6 there is what gives her Thelas and La Tear.',
         'Cast Earth Guard on Zin once he has Bastion.'
       ]
@@ -83,11 +83,11 @@ window.BUILD = {
         t:  { target: 'Mind 4', needs: 'mind4', until: 'Mind 3' },
         ur: { target: 'Shield 4', needs: 'shield4', until: 'Evade 3', lock: 'wind' },
         ul: { target: 'EP Cut 4', needs: 'epcut4', until: 'EP Cut 3' },
-        ll: { target: 'Cast 3' },
+        ll: { target: 'Cast 3', shot: 'empty' },
         lr: { target: 'Action 4', needs: 'action4', until: 'Action 3', shot: 'Action 3' },
         b:  { target: 'Impede 3' }
       },
-      accessories: ['Divine Cross', 'Victory Headband'],
+      accessories: ['Vajra X', 'Feather Brooch+'],
       arts: [
         { label: 'Already has', list: 'Aero Storm, Clock Up EX, Anti-Sept All, Chaos Brand' },
         { label: 'Action 4 adds', list: 'Orbal Down (cancels casting, big delay, all stats down)' },
@@ -97,7 +97,8 @@ window.BUILD = {
       notes: [
         'Shield 4 is a free upgrade over Evade 3: same Wind-locked slot, more Wind, so no Art is lost.',
         'Evade 3 was only there because that slot is Wind-locked.',
-        'Swap Victory Headband for Vajra X if you want Arts damage over CP gain.'
+        'Her lower-left slot is empty in the save: her Cast 3 went to Kloe. Synthesize another; none is spare in the bag.',
+        'Accessories are what she wears now, and both add SPD +15. Victory Headband (on Tita) is the swap if you want faster CP for Heaven\u2019s Kiss.'
       ]
     },
     {
@@ -105,12 +106,12 @@ window.BUILD = {
       lines: [['c', 't', 'ur', 'lr', 'b', 'll', 'ul']],
       slots: {
         c:  { target: 'Mercy', lock: 'water' },
-        t:  { target: 'Heal', shot: 'Cobalt Guard', lock: 'water' },
-        ul: { target: 'Action 3', shot: 'Septium Vein' },
-        ur: { target: 'Cast 3', shot: 'Ingenuity' },
+        t:  { target: 'Heal', lock: 'water' },
+        ul: { target: 'Action 3' },
+        ur: { target: 'Cast 3' },
         ll: { target: 'EP 4', needs: 'ep4', until: 'EP 3' },
         lr: { target: 'Sage Sight' },
-        b:  { target: 'Jade Guard', shot: 'Serendipity' }
+        b:  { target: 'Jade Guard' }
       },
       accessories: ['Blue Sphere+', 'Feather Brooch+'],
       arts: [
@@ -123,9 +124,8 @@ window.BUILD = {
         'The five white slots can be arranged in any order; she has one line.',
         'Heal is not for healing Arts. Its Fire 3 is what unlocks Plasma Wave and Napalm Breath.',
         'EP 3 / EP 4 supplies the Mirage that Tearal and Tear-All need. She has no EP Cut and her big Arts cost 360–420 EP.',
-        'You need a second Jade Guard and a second Cast 3. Both can be synthesized.',
         'Septium Vein, Ingenuity and Serendipity are farming quartz. Swap them back in when grinding.',
-        'Her SPD was 35 in the screenshot, far below everyone else. Action 3 and Feather Brooch+ matter most here.'
+        'She is the slowest of the four, so Action 3 and Feather Brooch+ matter most here. Both are on her now.'
       ]
     },
     {
@@ -146,8 +146,7 @@ window.BUILD = {
         'Attack 4: two guides pick Zin as this chapter’s main physical hitter, and he had no offensive quartz.',
         'Defense 4 more than covers Attack 4’s DEF penalty.',
         'Bastion: he holds Scent, so he is the one being hit. Have Estelle or Kloe cast Earth Guard on him.',
-        'To confirm in-game: the cursor hid Zin’s Top slot in the screenshot. It should be white. If Attack 4 will not go in, the slot is locked.',
-        'To confirm in-game: Bastion is an Earth quartz, so it should fit the Earth-locked center.'
+        'Confirmed in the game’s own data: his Top slot is white, and Bastion is an Earth quartz, so both placements are legal.'
       ]
     }
   ]

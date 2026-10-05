@@ -149,6 +149,10 @@ thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em
 tbody tr:last-child > * { border-bottom: 0; }
 tbody th { font-weight: 600; }
 
+.plain thead th { white-space: normal; }
+.plain td, .plain th { overflow-wrap: break-word; }
+@media (max-width: 520px) { .plain th, .plain td { padding: 8px 6px; font-size: 0.9rem; } }
+
 .find-table { min-width: 560px; }
 .find-table .col-check { width: 54px; text-align: center; }
 .find-table .fx { display: block; color: var(--muted); font-size: 0.82rem; }
