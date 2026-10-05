@@ -1365,12 +1365,35 @@
     for (var j = 0; j < links.length; j++) links[j].classList.toggle('is-current', links[j] === current);
     if (current && nav.scrollWidth > nav.clientWidth) {
       var left = current.offsetLeft - nav.offsetLeft;
-      if (left < nav.scrollLeft + 24 || left + current.offsetWidth > nav.scrollLeft + nav.clientWidth - 24) {
+      if (left < nav.scrollLeft + 52 || left + current.offsetWidth > nav.scrollLeft + nav.clientWidth - 52) {
         nav.scrollLeft = left - (nav.clientWidth - current.offsetWidth) / 2;
       }
     }
-    nav.parentNode.classList.toggle('can-scroll', nav.scrollWidth > nav.clientWidth + 2);
+    navEdges();
   }
+  // When the tabs do not all fit, the strip scrolls: show which way there is more.
+  function navEdges() {
+    var nav = byId('jump');
+    var max = nav.scrollWidth - nav.clientWidth;
+    nav.parentNode.classList.toggle('can-left', max > 2 && nav.scrollLeft > 2);
+    nav.parentNode.classList.toggle('can-right', max > 2 && nav.scrollLeft < max - 2);
+  }
+  (function () {
+    var nav = byId('jump');
+    nav.addEventListener('scroll', navEdges, { passive: true });
+    var step = function (dir) { nav.scrollLeft += dir * Math.max(160, nav.clientWidth * 0.6); };
+    byId('jump-prev').addEventListener('click', function () { step(-1); });
+    byId('jump-next').addEventListener('click', function () { step(1); });
+    // a mouse wheel over the strip moves it sideways
+    nav.addEventListener('wheel', function (e) {
+      if (nav.scrollWidth <= nav.clientWidth + 2 || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      var before = nav.scrollLeft;
+      nav.style.scrollBehavior = 'auto';
+      nav.scrollLeft += e.deltaY;
+      nav.style.scrollBehavior = '';
+      if (nav.scrollLeft !== before) e.preventDefault();
+    }, { passive: false });
+  })();
   window.addEventListener('scroll', function () {
     if (!spyQueued) { spyQueued = true; window.requestAnimationFrame(spy); }
   }, { passive: true });
