@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Reads the newest Trails in the Sky 2nd Chapter save and prints what each character
+// Reads the newest Trails in the Sky 2nd Chapter save and reports what each character
 // has slotted and equipped, plus spare quartz, accessories and U-Material in the bag.
 //
 // Read-only: it never writes to the save folder or the game folder.
@@ -8,6 +8,8 @@
 //   node tools/read-save.js            newest save, text report
 //   node tools/read-save.js --json     same, as JSON
 //   node tools/read-save.js <file>     a specific savedata file
+//
+// server.js uses the same functions to keep the page in sync while you play.
 //
 // Item names come from the game's own English table at run time; nothing from the game
 // is stored in this repo. Offsets were worked out against the 2026-10 Steam build and are
@@ -30,6 +32,18 @@ const SLOT_ORDER = ['c', 'll', 'ul', 't', 'ur', 'lr', 'b'];
 const SLOT_NAME = { c: 'Center', ll: 'Lower-left', ul: 'Upper-left', t: 'Top', ur: 'Upper-right', lr: 'Lower-right', b: 'Bottom' };
 const QUARTZ = [3700, 4400];
 const ACCESSORY = [1500, 1700];
+
+// Which record belongs to whom. The order is fixed in the save (seen across saves from
+// different days). Records not listed here are not playable party members right now.
+const WHO = {
+  0: { id: 'estelle', name: 'Estelle' },
+  2: { id: 'schera', name: 'Scherazard' },
+  3: { id: 'olivier', name: 'Olivier' },
+  4: { id: 'kloe', name: 'Kloe' },
+  5: { id: 'tita', name: 'Tita' },
+  6: { id: 'agate', name: 'Agate' },
+  7: { id: 'zin', name: 'Zin' }
+};
 
 // ---- game tables -------------------------------------------------------------
 function readFromPac(pacFile, wantedName) {
@@ -74,52 +88,51 @@ function loadItemNames() {
 }
 
 // ---- save --------------------------------------------------------------------
+// Cheap: one stat call per save slot. Used by the server on every tick.
 function newestSave() {
   const dirs = fs.readdirSync(SAVE_DIR).filter((d) => /^save\d+$/.test(d));
   let best = null;
   for (const d of dirs) {
     const f = path.join(SAVE_DIR, d, 'savedata');
-    if (!fs.existsSync(f)) continue;
-    const t = fs.statSync(f).mtimeMs;
-    if (!best || t > best.t) best = { f, t, slot: d };
+    let st;
+    try { st = fs.statSync(f); } catch (e) { continue; }
+    if (!best || st.mtimeMs > best.t) best = { f, t: st.mtimeMs, size: st.size, slot: d };
   }
   if (!best) throw new Error('no saves found in ' + SAVE_DIR);
   return best;
 }
 
-function unpack(file) {
-  const buf = fs.readFileSync(file);
+function unpack(buf) {
   const off = Number(buf.readBigUInt64LE(0)), len = Number(buf.readBigUInt64LE(8));
-  if (buf.readUInt32LE(off) !== 0xfd2fb528) throw new Error('save does not start with a Zstandard block');
+  if (off + len > buf.length || buf.readUInt32LE(off) !== 0xfd2fb528) throw new Error('save is incomplete or not in the expected format');
   return zlib.zstdDecompressSync(buf.subarray(off, off + len));
 }
 
-function readSave(file, names) {
-  const b = unpack(file);
+// Reads one savedata file. The file is read in a single call and never held open.
+function readSaveFile(file, names) {
+  const b = unpack(fs.readFileSync(file));
   const nm = (id) => (id === 0 ? null : (names.get(id) || '#' + id));
   const isQuartz = (v) => v === 0 || (v >= QUARTZ[0] && v < QUARTZ[1]);
 
   // sanity check: the first record must look like an orbment block
   const first = SLOT_ORDER.map((_, k) => b.readUInt32LE(REC_FIRST + k * 4));
   if (!first.every(isQuartz) || !first.some(Boolean)) {
-    throw new Error('save layout not recognised (game updated?). Offsets in this script need re-finding.');
+    throw new Error('save layout not recognised (game updated?). Offsets in tools/read-save.js need re-finding.');
   }
 
-  const characters = [];
-  for (let i = 0; i < 16; i++) {
-    const o = REC_FIRST + i * REC_SIZE;
+  const characters = {};
+  for (const [index, who] of Object.entries(WHO)) {
+    const o = REC_FIRST + Number(index) * REC_SIZE;
     const q = SLOT_ORDER.map((_, k) => b.readUInt32LE(o + k * 4));
-    if (!q.every(isQuartz)) break;
-    const costume = nm(b.readUInt32LE(o + 19 * 4));
-    if (!costume || !q.some(Boolean)) continue; // not a playable party record
+    if (!q.every(isQuartz)) throw new Error('save layout not recognised at ' + who.name + "'s record.");
     const gear = [14, 15, 16, 17, 18].map((k) => nm(b.readUInt32LE(o + k * 4)));
     const s = o - STATS_BACK;
-    characters.push({
-      name: costume.split(' - ')[0],
+    characters[who.id] = {
+      name: who.name,
       level: b.readUInt32LE(s + 4), hp: b.readUInt32LE(s + 12), ep: b.readUInt32LE(s + 20),
       slots: Object.fromEntries(SLOT_ORDER.map((k, n) => [k, nm(q[n])])),
       weapon: gear[0], armor: gear[1], shoes: gear[2], accessories: [gear[3], gear[4]]
-    });
+    };
   }
 
   const bag = { quartz: [], accessories: [], uMaterial: 0 };
@@ -133,25 +146,22 @@ function readSave(file, names) {
   return { characters, bag };
 }
 
-// ---- report ------------------------------------------------------------------
+module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, loadItemNames, newestSave, readSaveFile };
+
+// ---- command line ------------------------------------------------------------
 function main() {
   const args = process.argv.slice(2);
   const json = args.includes('--json');
   const fileArg = args.find((a) => !a.startsWith('--'));
   const src = fileArg ? { f: fileArg, t: fs.statSync(fileArg).mtimeMs, slot: path.basename(path.dirname(fileArg)) } : newestSave();
-
-  // work on a copy so the game never sees its file held open
-  const tmp = path.join(os.tmpdir(), 'sky2-save-' + process.pid + '.bin');
-  fs.copyFileSync(src.f, tmp);
-  let data;
-  try { data = readSave(tmp, loadItemNames()); } finally { fs.unlinkSync(tmp); }
+  const data = readSaveFile(src.f, loadItemNames());
   data.save = { slot: src.slot, written: new Date(src.t).toISOString() };
 
   if (json) { console.log(JSON.stringify(data, null, 1)); return; }
 
   console.log('Save: ' + src.slot + ', written ' + new Date(src.t).toLocaleString() + '\n');
-  for (const c of data.characters) {
-    console.log(c.name + '  Lv ' + c.level + '  HP ' + c.hp + '  EP ' + c.ep);
+  for (const c of Object.values(data.characters)) {
+    console.log(c.name);
     for (const k of ['t', 'ul', 'ur', 'c', 'll', 'lr', 'b']) {
       console.log('   ' + SLOT_NAME[k].padEnd(12) + (c.slots[k] || '(empty)'));
     }
@@ -164,4 +174,6 @@ function main() {
   console.log('U-Material: ' + data.bag.uMaterial);
 }
 
-try { main(); } catch (e) { console.error('read-save: ' + e.message); process.exit(1); }
+if (require.main === module) {
+  try { main(); } catch (e) { console.error('read-save: ' + e.message); process.exit(1); }
+}

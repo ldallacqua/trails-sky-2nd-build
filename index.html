@@ -21,6 +21,10 @@
     </div>
   </header>
 
+  <div id="live-bar" class="live-bar" hidden>
+    <div class="wrap"><span class="pulse" aria-hidden="true"></span><span id="live-text"></span></div>
+  </div>
+
   <nav class="jump" aria-label="Sections">
     <div class="wrap">
       <a href="#now">Do now</a>
@@ -53,12 +57,12 @@
         <h2 id="now-h">Do now</h2>
         <button type="button" id="applied-toggle" class="btn"></button>
       </div>
+      <div id="do-now-live" hidden></div>
       <div id="do-now">
-        <p class="quiet">Read from your save file (autosave of 2026-10-05, 02:16). Estelle and Kloe are already done.</p>
+        <p class="quiet">As of the save read on 2026-10-05, 02:26. This published page cannot see your save; run the local live page (<code>start-live.cmd</code>) to keep it current by itself.</p>
         <ol class="steps">
-          <li><strong>Schera, lower-right:</strong> Action 3 → <strong>Action 4</strong>. It is sitting in your bag. This unlocks Orbal Down.</li>
-          <li><strong>Schera, lower-left is empty:</strong> slot the <strong>Cast 3</strong> that is in your bag.</li>
-          <li><strong>Zin:</strong> leave as is until you find his quartz below.</li>
+          <li><strong>All four match the build</strong> for what you own, including Action 4 on Schera and Defense 4 on Zin.</li>
+          <li><strong>Next:</strong> slot each quartz below as you find it.</li>
         </ol>
         <p class="done-note">Marked as done. The “was …” notes on the diagrams are hidden.</p>
       </div>
@@ -69,7 +73,7 @@
         <h2 id="find-h">Find and slot</h2>
         <span class="count" id="unique-count"></span>
       </div>
-      <p class="quiet">One copy of each this chapter. Tick what you have and the diagrams below update. Ticks are saved on this device. Your save confirms Action 4 is the only one you own so far.</p>
+      <p class="quiet" id="find-hint"></p>
       <div class="table-scroll">
         <table class="find-table">
           <thead>
@@ -81,9 +85,23 @@
       <p class="quiet">Rank 4 is only +5 points over rank 3. The real gain is the extra elemental point, which unlocks new Arts.</p>
     </section>
 
+    <section class="card" id="bag" aria-labelledby="bag-h" hidden>
+      <h2 id="bag-h">Your bag</h2>
+      <p class="quiet">Read from your save. U-Material: <strong id="bag-umat"></strong></p>
+      <details>
+        <summary>Spare quartz</summary>
+        <p class="chips" id="bag-quartz"></p>
+      </details>
+      <details>
+        <summary>Spare accessories</summary>
+        <p class="chips" id="bag-accessories"></p>
+      </details>
+    </section>
+
     <section aria-labelledby="chars-h">
       <h2 id="chars-h" class="section-title">Orbments</h2>
       <ul class="legend">
+        <li><span class="orb orb-sm el-wind legend-ok"><span class="check">✓</span></span> tick = already slotted (live page only)</li>
         <li><span class="orb orb-sm lock lock-wind el-wind"></span> coloured ring = locked slot</li>
         <li><span class="mark mark-change">name</span> = swap now</li>
         <li><span class="orb orb-sm is-pending-demo"></span> dashed = waiting on a quartz you have not found</li>
@@ -255,6 +273,11 @@
       </details>
       <details>
         <summary>Change log</summary>
+        <h3>v17 — 2026-10-05</h3>
+        <ul class="notes">
+          <li>Live mode: run the local server and the page follows your save by itself. Slots and accessories show a tick when they already match, the find list ticks itself, and the to-do list is worked out from the save, including where each missing quartz is.</li>
+          <li>The published page keeps working without the server, with manual ticks.</li>
+        </ul>
         <h3>v16 — 2026-10-05</h3>
         <ul class="notes">
           <li>Synced to the actual save file: slots, gear, accessories and bag contents.</li>

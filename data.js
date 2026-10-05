@@ -2,7 +2,7 @@
 // Elemental values come from the in-game Value box (screenshots) and Kago's quartz table.
 
 window.BUILD = {
-  version: 'v16',
+  version: 'v17',
   updated: '2026-10-05',
   chapter: 'Chapter 4 — Rolent',
 
@@ -39,7 +39,7 @@ window.BUILD = {
   // One-copy quartz. found = already owned (the page lets you tick the rest).
   uniques: [
     { key: 'action4',  name: 'Action 4',  where: 'Milch Main Road', chest: 'monster chest', to: 'Schera',  slot: 'lower-right', replaces: 'Action 3',    found: true },
-    { key: 'defense4', name: 'Defense 4', where: 'Milch Main Road', to: 'Zin',     slot: 'lower-right', replaces: 'Defense 3' },
+    { key: 'defense4', name: 'Defense 4', where: 'Milch Main Road', to: 'Zin',     slot: 'lower-right', replaces: 'Defense 3', found: true },
     { key: 'mind4',    name: 'Mind 4',    where: 'Elize Turnpike',  to: 'Schera',  slot: 'top',         replaces: 'Mind 3' },
     { key: 'attack4',  name: 'Attack 4',  where: 'Malga Trail',     to: 'Zin',     slot: 'top',         replaces: 'Evade 3' },
     { key: 'ep4',      name: 'EP 4',      where: 'Mistwald', chest: 'monster chest', to: 'Kloe',    slot: 'lower-left',  replaces: 'EP 3' },
@@ -50,7 +50,8 @@ window.BUILD = {
 
   // Slot keys: c, t, ur, lr, b, ll, ul.
   // target = what to slot. needs/until = a one-copy quartz and what sits there before you own it.
-  // shot = what the last save read showed, when it differs from what should be there now. lock = slot colour.
+  // shot = optional: what was in the slot at the last manual sync, if different (only shown without the live server).
+  // lock = slot colour.
   characters: [
     {
       id: 'estelle', name: 'Estelle', role: 'Buffer, item healer, interrupter',
@@ -83,8 +84,8 @@ window.BUILD = {
         t:  { target: 'Mind 4', needs: 'mind4', until: 'Mind 3' },
         ur: { target: 'Shield 4', needs: 'shield4', until: 'Evade 3', lock: 'wind' },
         ul: { target: 'EP Cut 4', needs: 'epcut4', until: 'EP Cut 3' },
-        ll: { target: 'Cast 3', shot: 'empty' },
-        lr: { target: 'Action 4', needs: 'action4', until: 'Action 3', shot: 'Action 3' },
+        ll: { target: 'Cast 3' },
+        lr: { target: 'Action 4', needs: 'action4', until: 'Action 3' },
         b:  { target: 'Impede 3' }
       },
       accessories: ['Vajra X', 'Feather Brooch+'],
@@ -97,7 +98,6 @@ window.BUILD = {
       notes: [
         'Shield 4 is a free upgrade over Evade 3: same Wind-locked slot, more Wind, so no Art is lost.',
         'Evade 3 was only there because that slot is Wind-locked.',
-        'Her lower-left slot is empty in the save: her Cast 3 went to Kloe. There is a new Cast 3 in the bag to put there.',
         'Accessories are what she wears now, and both add SPD +15. Victory Headband (on Tita) is the swap if you want faster CP for Heaven\u2019s Kiss.'
       ]
     },
