@@ -1,2 +1,4 @@
 # Readable chapter notes: spoilers. Recreate with: node tools/build.js --unseal
 chapters-src/
+# game art extracted from your own install by tools/extract-assets.js; never committed
+assets/

@@ -563,3 +563,54 @@ details h3 { margin-top: 12px; font-size: 0.95rem; }
   .swap-list .where { padding-left: 0; }
   .brand-mark { width: 44px; height: 44px; }
 }
+
+/* ---------- the game's own art (live mode only; see tools/extract-assets.js) ---------- */
+.gi {
+  --gs: 20px;
+  display: inline-block; flex: none; width: var(--gs); height: var(--gs); margin-right: 5px; vertical-align: middle;
+  background: url(assets/icons.png) no-repeat;
+  background-size: calc(var(--gs) * 1024 / 48) auto;
+  background-position: calc(var(--gx) * var(--gs) * -1) calc(var(--gy) * var(--gs) * -1);
+}
+.gi-lg { --gs: 30px; margin-right: 8px; }
+.chip .gi { --gs: 18px; margin: -1px 5px -1px -4px; }
+.art .gi { --gs: 16px; margin-left: -3px; }
+.value-table thead .gi { --gs: 22px; display: block; margin: 0 auto 1px; }
+.el-tag .gi { --gs: 22px; margin-right: 7px; }
+.find-table .gi, .ref-table .gi, .art-name .gi { --gs: 22px; margin-right: 7px; }
+
+.avatar.has-face { background: none; box-shadow: none; overflow: visible; }
+.avatar.has-face img { display: block; width: 118%; height: 118%; max-width: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35)); }
+.is-bench .avatar.has-face { filter: saturate(0.6); }
+.jump a.jump-who.is-current { border-radius: 999px; }
+
+.orb.orb-art {
+  --s: calc(var(--orb) * 1.2);
+  background: url(assets/icons.png) no-repeat;
+  background-size: calc(var(--s) * 1024 / 48) auto;
+  background-position: calc(var(--gx) * var(--s) * -1 - (var(--s) - var(--orb)) / 2) calc(var(--gy) * var(--s) * -1 - (var(--s) - var(--orb)) / 2);
+  box-shadow: none; border-radius: 0;
+}
+.orbment.has-dial::before {
+  content: ""; position: absolute; inset: 0.8%; border-radius: 50%;
+  background: url(assets/dial.png) center / 100% 100% no-repeat;
+  box-shadow: 0 10px 22px -6px rgba(0, 0, 0, 0.5);
+}
+.orbment.has-dial svg { filter: none; }
+.orbment.has-dial .dial-bezel, .orbment.has-dial .dial-face, .orbment.has-dial .dial-ticks, .orbment.has-dial .dial-hub { display: none; }
+.orbment.has-dial .socket { fill: #17120e; stroke: #8d7758; stroke-width: 0.5; }
+.orbment.has-dial .socket-lock { stroke: var(--lc); stroke-width: 1.5; }
+.orbment.has-dial .socket-pending { stroke: #efe4cd; }
+.orbment.has-dial .rail-case { stroke: #0b0806; opacity: 0.75; }
+.gear.has-icon { display: flex; align-items: center; }
+.gear.has-icon b { display: none; } /* the icon says what kind of gear it is */
+.gear-text { min-width: 0; }
+.has-art .st-row { grid-template-columns: minmax(150px, 1fr) repeat(3, minmax(92px, 0.8fr)) minmax(400px, 2.8fr); }
+.has-art .st-who .avatar { width: 40px; height: 40px; }
+@media (max-width: 900px) { .has-art .st-row { grid-template-columns: repeat(3, 1fr); } }
+.avatar-sm { width: 38px; height: 38px; font-size: 1rem; }
+.tile-faces { display: flex; gap: 4px; margin: 2px 0 4px -2px; }
+.jump a.jump-who .avatar.has-face { width: 28px; height: 28px; opacity: 1; }
+.jump a.jump-who { padding: 2px 3px; }
+.swap-list .to .gi { --gs: 20px; }
+.goes .avatar-xs { margin-right: 6px; vertical-align: middle; }

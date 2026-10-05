@@ -83,13 +83,28 @@ function loadTable(name) {
   return { b, str, rows };
 }
 
-function loadItemNames(kinds) {
+// Cell on the game's icon sheet (21 cells per row). Upgraded gear names its own cell; everything
+// else gets the cell of its kind: weapons by who wields them, quartz by element.
+function iconCell(t, e) {
+  const type = t.b[e + KIND_AT], sub = t.b[e + KIND_AT + 1], own = t.b[e + KIND_AT + 2];
+  if (own) return own;
+  if (type === 0x0b) return 21 + (t.b[t.b.readUInt32LE(e + 0x08)] || 0);
+  if (type === 0x0c) return 2;
+  if (type === 0x0d) return 3;
+  if (type === 0x0e) return 4;
+  if (type === 0x12) return 84 + (sub - 20);
+  if (type === 0x01 && (sub === 1 || sub === 2)) return 1;
+  return null;
+}
+
+function loadItemNames(kinds, icons) {
   const t = loadTable('t_item.tbl');
   const names = new Map();
   for (const e of t.rows('ItemTableData')) {
     const id = t.b.readUInt32LE(e);
     names.set(id, t.str(t.b.readUInt32LE(e + 0xe0)));
     if (kinds) kinds.set(id, t.b[e + KIND_AT] + '/' + t.b[e + KIND_AT + 1]);
+    if (icons) icons.set(id, iconCell(t, e));
   }
   return names;
 }
@@ -97,12 +112,13 @@ function loadItemNames(kinds) {
 // Everything the reader needs from the game, loaded once.
 //   items     id -> English name
 //   kinds     id -> "type/sub-type" as the item table has it
+//   icons     id -> cell on the game's icon sheet, or null
 //   people    character id -> { id, name } for everyone who has an orbment
 //   layouts   character id -> { lines: [[slot keys from the center outwards]], locks: { slot: element } }
 //   chapters  chapter number -> title
 function loadGame() {
-  const kinds = new Map();
-  const items = loadItemNames(kinds);
+  const kinds = new Map(), icons = new Map();
+  const items = loadItemNames(kinds, icons);
 
   const orb = loadTable('t_orbment.tbl');
   const layouts = new Map();
@@ -131,7 +147,7 @@ function loadGame() {
     const cid = nm.b.readUInt32LE(e);
     if (!layouts.has(cid) || people.has(cid)) continue;
     const name = nm.str(nm.b.readUInt32LE(e + 8));
-    people.set(cid, { id: name.toLowerCase().replace(/[^a-z]+/g, ''), name });
+    people.set(cid, { id: name.toLowerCase().replace(/[^a-z]+/g, ''), name, model: nm.str(nm.b.readUInt32LE(e + 0x20)) });
   }
 
   const ch = loadTable('t_chapter.tbl');
@@ -140,7 +156,7 @@ function loadGame() {
     const n = ch.b.readUInt16LE(e);
     if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
   }
-  return { items, kinds, people, layouts, chapters };
+  return { items, kinds, icons, people, layouts, chapters };
 }
 
 // ---- save --------------------------------------------------------------------
@@ -188,17 +204,20 @@ function readSaveFile(file, game) {
     if (!who || idOf.has(cid) || level === 0 || level > 200) continue;
     const q = SLOT_ORDER.map((_, k) => b.readUInt32LE(o + k * 4));
     if (!q.every(isQuartz)) continue;
-    const gear = [14, 15, 16, 17, 18].map((k) => nm(b.readUInt32LE(o + k * 4)));
+    const gearIds = [14, 15, 16, 17, 18].map((k) => b.readUInt32LE(o + k * 4));
+    const gear = gearIds.map(nm);
+    const cell = (id) => (id && game.icons ? game.icons.get(id) : null);
     const lay = game.layouts.get(cid);
     idOf.set(cid, who.id);
     characters[who.id] = {
-      id: who.id, name: who.name, level,
+      id: who.id, name: who.name, model: who.model, level,
       hp: b.readUInt32LE(s + 16), ep: b.readUInt32LE(s + 24),
       // as of the moment the game wrote this save
       now: { hp: b.readUInt32LE(s + 12), ep: b.readUInt32LE(s + 20), cp: b.readUInt32LE(s + 28), cpMax: b.readUInt32LE(s + 32) },
       slots: Object.fromEntries(SLOT_ORDER.map((k, n) => [k, nm(q[n])])),
       lines: lay.lines, locks: lay.locks,
-      weapon: gear[0], armor: gear[1], shoes: gear[2], accessories: [gear[3], gear[4]]
+      weapon: gear[0], armor: gear[1], shoes: gear[2], accessories: [gear[3], gear[4]],
+      icons: { weapon: cell(gearIds[0]), armor: cell(gearIds[1]), shoes: cell(gearIds[2]) }
     };
   }
   if (!characters.estelle) throw new Error('save layout not recognised: Estelle\u2019s record was not found.');

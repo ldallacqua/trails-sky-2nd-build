@@ -224,7 +224,7 @@ for (const [id, v] of quartzValues) {
   // effect text: the hand-written line when there is one, otherwise worded from the table
   allQuartz[name] = [colourOf(id), ELEMENTS.map((e) => v[e] || 0), FX[name] || info.stats.concat(info.extra).join(', '), info.res];
 }
-// every accessory: name -> [stats and effects, { status: % resisted }]
+// every accessory: name -> [stats and effects, { status: % resisted }, cell on the game's icon sheet]
 const allAccessories = {};
 // healing and support items: name -> the game's description
 const supplies = {};
@@ -233,7 +233,7 @@ for (const [id, name] of game.items) {
   const kind = kindOf(id);
   if (kind === '14/11' && !allAccessories[name]) {
     const info = itemInfo(id);
-    allAccessories[name] = [info.stats.concat(info.extra).join(', '), info.res];
+    allAccessories[name] = [info.stats.concat(info.extra).join(', '), info.res, game.icons.get(id)];
   } else if ((kind === '1/1' || kind === '1/2') && !supplies[name]) supplies[name] = itemInfo(id).desc;
 }
 

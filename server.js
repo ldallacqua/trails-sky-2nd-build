@@ -5,12 +5,17 @@
 //   node server.js --open       same, and open the page in your browser
 //   node server.js --interval 5 check every 5 seconds (default 3)
 //   node server.js --port 9000
+//   node server.js --no-assets  do not use the game's art; keep the drawn look
 //
 // How it stays cheap: every tick is one stat call per save slot. The save is only read and
 // unpacked when its timestamp or size changes, which is whenever the game writes a save.
 // The page is told about changes over a single kept-open connection, so it does not poll.
 //
-// Spoiler gate: chapter notes are only served up to the chapter the save is in.
+// Spoiler gate: chapter notes are only served up to the chapter the save is in, and a portrait
+// only for a character who is in the save.
+//
+// Game art (icons, portraits, the orbment face) is read from your own install into assets/ the
+// first time it is needed. assets/ stays on this PC.
 //
 // Read-only, local only (127.0.0.1), no dependencies. Needs Node 22.15+.
 
@@ -20,6 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { loadGame, newestSave, readSaveFile, SAVE_DIR } = require('./tools/read-save.js');
+const { ensureAssets, ASSET_DIR } = require('./tools/extract-assets.js');
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf('--' + name); return i !== -1 && args[i + 1] ? Number(args[i + 1]) : fallback; };
@@ -30,7 +36,8 @@ const STATIC = {
   '/': 'index.html', '/index.html': 'index.html', '/styles.css': 'styles.css',
   '/app.js': 'app.js', '/data.js': 'data.js', '/game-data.js': 'game-data.js'
 };
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.dat': 'text/plain; charset=utf-8' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.dat': 'text/plain; charset=utf-8', '.png': 'image/png' };
+const NO_ASSETS = args.includes('--no-assets');
 
 let game;
 try { game = loadGame(); } catch (e) { console.error('Could not read the game tables: ' + e.message); process.exit(1); }
@@ -51,6 +58,8 @@ function tick() {
     const data = readSaveFile(newest.f, game); // throws if the game is mid-write; retried next tick
     data.save = { slot: newest.slot, written: new Date(newest.t).toISOString() };
     data.interval = INTERVAL;
+    // art for the people in this save; null when the game's files cannot be read
+    data.assets = NO_ASSETS ? null : ensureAssets(Object.values(data.characters).map((c) => ({ id: c.id, model: c.model })));
     current = data;
     currentKey = key;
     lastProblem = '';
@@ -97,6 +106,18 @@ const server = http.createServer((req, res) => {
     const reached = current && current.chapter ? current.chapter.n : -1;
     if (Number(chapter[1]) > reached) { res.writeHead(403); res.end('Not reached yet'); return; }
     serveFile(res, path.join('chapters', 'ch' + Number(chapter[1]) + '.dat'));
+    return;
+  }
+  const asset = /^\/assets\/(icons|dial|face\/([a-z]+))\.png$/.exec(url);
+  if (asset) {
+    const got = current && current.assets;
+    const ok = got && (asset[2] ? got.faces.indexOf(asset[2]) !== -1 && current.characters[asset[2]] : got[asset[1]]);
+    if (!ok) { res.writeHead(404); res.end('Not found'); return; }
+    fs.readFile(path.join(ASSET_DIR, asset[1] + '.png'), (err, body) => {
+      if (err) { res.writeHead(404); res.end('Not found'); return; }
+      res.writeHead(200, { 'Content-Type': MIME['.png'], 'Cache-Control': 'max-age=86400' });
+      res.end(body);
+    });
     return;
   }
   const file = STATIC[url];

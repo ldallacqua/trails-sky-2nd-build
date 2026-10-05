@@ -23,10 +23,17 @@ This opens http://localhost:8733 and follows your save by itself:
 - party Arts shows who can cast what with the quartz slotted right now
 - status protection shows who resists what, and which spare accessory in the bag would cover a gap
 - the bag lists healing items, spare quartz and spare accessories, each with what it does
+- it uses the game's own art: character portraits, quartz, item and element icons, and the orbment face
 
 It updates a few seconds after the game writes a save (the autosave slot is written every few minutes and after menu changes). No reload, no buttons.
 
 **Published.** https://ldallacqua.github.io/trails-sky-2nd-build/ is the same page without the server. It cannot see your save, so you tick things by hand, and it asks before opening the next chapter.
+
+## Game art
+
+The live server reads a few textures from your own install the first time it needs them and writes them to `assets/`: the icon sheet, the orbment face, and one round portrait per character. `assets/` is in `.gitignore`. The art belongs to the game's publisher, so it is never committed or published; the GitHub Pages copy draws its own orbs and uses initials instead.
+
+Portraits are extracted one at a time and only for characters who are in your save, and the server refuses to serve any other. `node tools/extract-assets.js --clean` deletes the folder; `node server.js --no-assets` runs without it.
 
 ## Spoilers
 
@@ -46,6 +53,7 @@ The server is read-only, listens on 127.0.0.1 only, and has no dependencies. It 
 - `chapters-src/chN.js` (not committed) is the build for one chapter: party rules, where each quartz comes from, each character's target slots and accessories, boss prep and notes. A slot is either a quartz name or `[target, stand-in until you own it]`. `_lib.js` has the shared build templates.
 - `tools/build.js` turns those into `chapters/chN.dat` and `game-data.js`. It takes every character's line layout and slot locks, every quartz colour, value and effect, every accessory's stats and resistances, and every Art's requirements, EP cost and description from the game's own tables, and refuses to build if a note puts a quartz where it cannot go. `--report N` prints chapter N's lines, values and Arts. `--check-fx` prints each hand-written quartz effect line next to what the table says.
 - `app.js` draws the page: it works out what each slot should hold given what is owned, compares that with the save, and computes the Arts each layout gives.
+- `tools/extract-assets.js` pulls the art out of the game's image archive, and `tools/texture.js` decodes it (LZ4, BC7 and PNG writing, no dependencies; the BC7 part is a port of the MIT-licensed bcdec).
 - `server.js` is the local live-sync server. `tools/read-save.js` reads a save and also works on its own: `node tools/read-save.js`.
 - `data.js` has the version and the chapter the published copy starts on.
 

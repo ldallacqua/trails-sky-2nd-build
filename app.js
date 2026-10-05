@@ -167,7 +167,7 @@
         if (!s.u && !a.missing && !a.waiting) return; // a plain slot you already have the quartz for
         var r = rowOf[s.t] || (rowOf[s.t] = { name: s.t, wants: [], got: 0 });
         var got = a.name === s.t && !a.missing;
-        r.wants.push({ who: b.name, slot: k, replaces: s.u || null, got: got });
+        r.wants.push({ id: id, who: b.name, slot: k, replaces: s.u || null, got: got });
         if (got) r.got++;
       });
     });
@@ -253,9 +253,33 @@
     var li = el('li');
     add(li, el('span', 'pos', it.pos));
     if (it.from) add(li, el('span', 'from', it.from), el('span', 'arrow', '→'));
-    add(li, el('strong', 'to', it.to));
+    var to = el('strong', 'to');
+    add(to, G.quartz[it.to] && art() ? mark(quartz(it.to).el, 'quartz') : itemIcon((G.accessories[it.to] || [])[2]), document.createTextNode(it.to));
+    li.appendChild(to);
     if (it.where) add(li, el('span', 'where', it.where));
     return li;
+  }
+
+  // ---- the game's own art, when the live server has extracted it from your install ----
+  function art() { return live && live.assets ? live.assets : null; }
+  // one cell of the game's icon sheet (48 px cells, 21 per row)
+  function sheet(cell, cls) {
+    var s = el('span', 'gi' + (cls ? ' ' + cls : ''));
+    s.style.setProperty('--gx', cell % 21);
+    s.style.setProperty('--gy', Math.floor(cell / 21));
+    s.setAttribute('aria-hidden', 'true');
+    return s;
+  }
+  var SHEET_ROW = { art: 42, element: 63, quartz: 84 };
+  // the mark in front of an element, Art or quartz name: the game's icon, or a coloured dot
+  function mark(element, kind, cls) {
+    var a = art(), i = ELS.indexOf(element);
+    if (a && a.icons && i !== -1) return sheet(SHEET_ROW[kind] + i, cls);
+    return el('span', 'dot el-' + element + (cls ? ' ' + cls : ''));
+  }
+  function itemIcon(cell, cls) {
+    var a = art();
+    return a && a.icons && cell != null ? sheet(cell, cls) : null;
   }
 
   function shortName(name) { return name === 'Scherazard' ? 'Schera' : name; }
@@ -272,6 +296,15 @@
     var hue = HUE[id];
     if (hue == null) { hue = 0; for (var i = 0; i < id.length; i++) hue = (hue * 31 + id.charCodeAt(i)) % 360; }
     a.style.setProperty('--h', hue);
+    var got = art();
+    if (got && got.faces.indexOf(id) !== -1) {
+      var img = el('img');
+      img.src = 'assets/face/' + id + '.png';
+      img.alt = '';
+      a.textContent = '';
+      a.classList.add('has-face');
+      a.appendChild(img);
+    }
     if (labelled) { a.title = name; a.setAttribute('role', 'img'); a.setAttribute('aria-label', name); }
     else a.setAttribute('aria-hidden', 'true');
     return a;
@@ -279,7 +312,8 @@
 
   // cells[k] = { name, ok, change, has, later, missing }
   function renderOrbment(lines, locks, cells) {
-    var wrap = el('div', 'orbment');
+    var got = art();
+    var wrap = el('div', 'orbment' + (got && got.dial ? ' has-dial' : ''));
     var NS = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
@@ -324,6 +358,11 @@
       node.style.top = POS[k][1].toFixed(2) + '%';
       node.title = POS_NAME[k] + (c.name ? ': ' + c.name + (q.fx ? ' — ' + q.fx : '') : ': empty');
       var orb = el('span', 'orb' + (q ? ' el-' + q.el : ' orb-empty'));
+      if (q && got && got.icons) {
+        orb.classList.add('orb-art');
+        orb.style.setProperty('--gx', (SHEET_ROW.quartz + ELS.indexOf(q.el)) % 21);
+        orb.style.setProperty('--gy', Math.floor((SHEET_ROW.quartz + ELS.indexOf(q.el)) / 21));
+      }
       if (c.ok) orb.appendChild(el('span', 'check', '✓'));
       add(node, orb, el('span', 'q', c.name || 'empty'));
       if (lock) node.appendChild(el('span', 'sub lockname el-text-' + lock, EL_NAME[lock] + ' only'));
@@ -342,7 +381,7 @@
     hr.appendChild(el('th', '', ''));
     ELS.forEach(function (e) {
       var th = el('th');
-      add(th, el('span', 'dot el-' + e), el('span', 'el-abbr', EL_SHORT[e]));
+      add(th, mark(e, 'element'), el('span', 'el-abbr', EL_SHORT[e]));
       th.title = EL_NAME[e];
       hr.appendChild(th);
     });
@@ -373,7 +412,7 @@
     list.forEach(function (a) {
       var c = el('span', 'chip art ' + (cls || '') + ' el-' + a.el);
       c.title = 'EP ' + a.ep + ' — ' + a.d;
-      add(c, el('span', 'dot'), document.createTextNode(a.name));
+      add(c, mark(a.el, 'art'), document.createTextNode(a.name));
       p.appendChild(c);
     });
     return p;
@@ -462,7 +501,8 @@
       (b ? b.accessories : []).forEach(function (a) {
         var on = lc && lc.accessories.indexOf(a) !== -1;
         if (lc && !on) missing = true;
-        var chip = el('span', 'chip' + (lc ? (on ? ' chip-ok' : ' chip-missing') : ''), (on ? '✓ ' : '') + a);
+        var chip = el('span', 'chip' + (lc ? (on ? ' chip-ok' : ' chip-missing') : ''));
+        add(chip, itemIcon((G.accessories[a] || [])[2]), document.createTextNode((on ? '✓ ' : '') + a));
         chip.title = accessoryText(a);
         acc.appendChild(chip);
       });
@@ -529,8 +569,11 @@
       var who = el('div', 'st-who');
       add(who, avatar(id, lc.name), add(el('div', 'st-name'), el('strong', '', lc.name), el('span', 'st-sub', 'Lv ' + lc.level + (bench ? ' · reserve' : ''))));
       var gear = el('div', 'st-gear');
-      [['Weapon', lc.weapon], ['Armor', lc.armor], ['Footwear', lc.shoes]].forEach(function (g) {
-        add(gear, add(el('span', 'gear' + (g[1] ? '' : ' gear-none')), el('b', '', g[0]), document.createTextNode(g[1] || 'none')));
+      var cells = lc.icons || {};
+      [['Weapon', lc.weapon, cells.weapon], ['Armor', lc.armor, cells.armor], ['Footwear', lc.shoes, cells.shoes]].forEach(function (g) {
+        var icon = g[1] ? itemIcon(g[2], 'gi-lg') : null;
+        var text = add(el('span', 'gear-text'), el('b', '', g[0]), document.createTextNode(g[1] || 'none'));
+        add(gear, add(el('span', 'gear' + (g[1] ? '' : ' gear-none') + (icon ? ' has-icon' : '')), icon, text));
       });
       add(row, who, meter('HP', lc.now.hp, lc.hp, 'meter-hp'), meter('EP', lc.now.ep, lc.ep, 'meter-ep'), meter('CP', lc.now.cp, lc.now.cpMax, 'meter-cp'), gear);
       host.appendChild(row);
@@ -577,7 +620,7 @@
       support.forEach(function (a) {
         var tr = el('tr');
         var th = el('th', 'art-name el-' + a.el);
-        add(th, el('span', 'dot'), el('strong', '', a.name), el('span', 'fx', a.d));
+        add(th, mark(a.el, 'art'), el('strong', '', a.name), el('span', 'fx', a.d));
         add(tr, th, el('td', 'num', String(a.ep)));
         list.forEach(function (c) {
           var td = el('td', 'col-who');
@@ -597,7 +640,7 @@
     ELS.forEach(function (e) {
       var arts = G.arts.filter(function (a) { return who[a.name] && a.k === 'a' && a.el === e; });
       var row = el('div', 'el-row el-' + e + (arts.length ? '' : ' is-none'));
-      row.appendChild(add(el('span', 'el-tag'), el('span', 'dot'), document.createTextNode(EL_NAME[e])));
+      row.appendChild(add(el('span', 'el-tag'), mark(e, 'element'), document.createTextNode(EL_NAME[e])));
       var chips = el('div', 'chips');
       arts.forEach(function (a) {
         var chip = el('span', 'chip art-who');
@@ -711,7 +754,7 @@
     qnames.forEach(function (n) {
       var q = quartz(n);
       var tr = el('tr');
-      add(tr, add(el('th', 'el-' + q.el), el('span', 'dot'), document.createTextNode(n)), el('td', '', valueText(q.v)), el('td', '', q.fx || '—'),
+      add(tr, add(el('th', 'el-' + q.el), mark(q.el, 'quartz'), document.createTextNode(n)), el('td', '', valueText(q.v)), el('td', '', q.fx || '—'),
         el('td', where[n] ? '' : 'quiet', where[n] ? where[n].join(', ') : (live ? 'not owned yet' : '—')));
       qt.appendChild(tr);
     });
@@ -762,7 +805,9 @@
 
   function tile(label, value, sub, cls) {
     var t = el('div', 'tile ' + (cls || ''));
-    add(t, el('span', 'tile-label', label), el('strong', 'tile-value', value));
+    var v = el('strong', 'tile-value');
+    if (typeof value === 'string') v.textContent = value; else v.appendChild(value);
+    add(t, el('span', 'tile-label', label), v);
     if (sub) t.appendChild(el('span', 'tile-sub', sub));
     return t;
   }
@@ -775,7 +820,8 @@
     var tiles = el('div', 'tiles');
     add(tiles,
       tile('Chapter', live && live.chapter ? live.chapter.title.replace(/:.*$/, '') : CH.title, live && live.chapter ? live.chapter.title.replace(/^[^:]*:\s*/, '') : CH.region),
-      tile('Party', String(m.active.length), m.active.map(nameOf).join(' · ')),
+      tile('Party', art() ? add.apply(null, [el('span', 'tile-faces')].concat(m.active.map(function (id) { return avatar(id, nameOf(id), 'avatar-sm', true); }))) : String(m.active.length),
+        m.active.map(nameOf).join(' · ')),
       live ? tile('To change now', String(m.todo.length), m.todo.length ? 'slots and accessories' : 'everything matches', m.todo.length ? 'tile-warn' : 'tile-ok')
         : tile('Mode', 'Manual', 'this copy cannot see your save'),
       tile('Still to get', left + ' of ' + m.rows.length, left ? 'upgrades waiting' : 'all upgrades in place', left ? '' : 'tile-ok'));
@@ -876,7 +922,7 @@
         tdCheck.appendChild(label);
       }
       var tdName = el('td', 'col-name');
-      add(tdName, el('span', 'dot el-' + q.el), el('strong', '', r.name));
+      add(tdName, mark(q.el, 'quartz'), el('strong', '', r.name));
       if (q.fx) tdName.appendChild(el('span', 'fx', q.fx));
       var tdWhere = el('td', 'col-where', r.src ? r.src.where : '');
       if (r.src && r.src.tag) tdWhere.appendChild(el('span', 'tag', r.src.tag));
@@ -884,7 +930,7 @@
       var tdTo = el('td', 'col-to');
       r.wants.forEach(function (w) {
         var line = el('span', 'goes' + (w.got ? ' goes-ok' : ''));
-        add(line, el('strong', '', (w.got ? '✓ ' : '') + w.who), document.createTextNode(', ' + POS_NAME[w.slot].toLowerCase()));
+        add(line, art() ? avatar(w.id, w.who, 'avatar-xs') : null, el('strong', '', (w.got ? '✓ ' : '') + w.who), document.createTextNode(', ' + POS_NAME[w.slot].toLowerCase()));
         if (w.replaces && !w.got) line.appendChild(el('span', 'fx', 'replaces ' + w.replaces));
         tdTo.appendChild(line);
       });
@@ -925,7 +971,7 @@
       list.forEach(function (x) {
         var d = describe(x.name);
         var chip = el('span', 'chip' + (d.cls ? ' ' + d.cls : ''));
-        if (d.dot) chip.appendChild(el('span', 'dot'));
+        if (d.icon) chip.appendChild(d.icon);
         chip.appendChild(document.createTextNode(x.name));
         if (x.count > 1) chip.appendChild(el('span', 'n', '×' + x.count));
         if (d.title) chip.title = d.title;
@@ -934,15 +980,15 @@
     };
     var supplies = live.bag.supplies || [];
     var kind = function (k) { return supplies.filter(function (x) { return x.kind === k; }); };
-    var supply = function (name) { return { title: G.supplies[name] || '' }; };
+    var supply = function (name) { return { title: G.supplies[name] || '', icon: itemIcon(1) }; };
     chips('bag-recovery', kind('Recovery'), supply);
     chips('bag-support', kind('Support'), supply);
     byId('bag-supplies').hidden = !supplies.length;
     chips('bag-quartz', live.bag.quartz, function (name) {
       var q = quartz(name);
-      return { cls: 'el-' + q.el, dot: true, title: valueText(q.v) + (q.fx ? ' — ' + q.fx : '') };
+      return { cls: 'el-' + q.el, icon: mark(q.el, 'quartz'), title: valueText(q.v) + (q.fx ? ' — ' + q.fx : '') };
     });
-    chips('bag-accessories', live.bag.accessories, function (name) { return { title: accessoryText(name) }; });
+    chips('bag-accessories', live.bag.accessories, function (name) { return { title: accessoryText(name), icon: itemIcon((G.accessories[name] || [])[2]) }; });
     var total = function (list) { return list.reduce(function (n, x) { return n + x.count; }, 0); };
     byId('bag-quartz-n').textContent = total(live.bag.quartz) + ' spare';
     byId('bag-accessories-n').textContent = total(live.bag.accessories) + ' spare';
@@ -1067,6 +1113,7 @@
   function render() {
     renderMast();
     var app = byId('app');
+    document.body.classList.toggle('has-art', !!art());
     app.classList.toggle('is-empty', !CH);
     byId('notice').hidden = !notice;
     byId('notice').textContent = notice;
