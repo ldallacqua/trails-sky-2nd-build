@@ -76,12 +76,11 @@ If your game or saves are not in the default places, set `SKY2_GAME_DIR` and `SK
 ## How live mode works
 
 ```mermaid
-flowchart LR
-    G["The game<br>writes a save"] --> S["server.js<br>one stat call per slot<br>every 3 s"]
-    S -- "only when a file changed" --> R["read-save.js<br>unpack and parse"]
-    R --> E["Server-sent events<br>one kept-open connection"]
-    E --> P["The page<br>compares the save with the build<br>and redraws"]
-    T["Game tables"] --> B["build.js<br>validates the notes"]
+flowchart TD
+    G["The game writes a save"] --> S["server.js checks the save folder every 3 s"]
+    S -- "a file changed" --> R["read-save.js unpacks and parses it"]
+    R -- "pushed over one open connection" --> P["The page compares the save with the build and redraws"]
+    T["The game's tables"] --> B["build.js validates the chapter notes"]
     B --> C["Sealed chapter files"]
     C -- "up to your chapter only" --> P
 ```
