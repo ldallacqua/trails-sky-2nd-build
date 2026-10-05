@@ -466,7 +466,11 @@ details h3 { margin-top: 14px; font-size: 0.95rem; }
 /* ---------- character screens ---------- */
 .char { margin-bottom: 44px; }
 .char-body { display: grid; grid-template-columns: 1fr; gap: 16px; }
-@media (min-width: 900px) { .char-body { grid-template-columns: minmax(380px, 440px) minmax(0, 1fr); gap: 28px; align-items: start; } }
+@media (min-width: 900px) {
+  .char-body { grid-template-columns: minmax(380px, 440px) minmax(0, 1fr); grid-template-rows: auto 1fr; gap: 16px 28px; align-items: start; }
+  .char-side { grid-column: 2; grid-row: 1 / span 2; }
+  .char-equip { grid-column: 1; grid-row: 2; } /* the Equip list sits under the dial */
+}
 .mini-status { display: flex; align-items: center; gap: 14px; width: fit-content; max-width: 100%; margin: 4px 0 6px 20px; padding: 6px 18px 8px 0; }
 .mini-status .lv { margin: -10px 0 -10px -20px; }
 .mini-status .meter { flex: 1; min-width: 126px; margin: 0; }
@@ -570,6 +574,21 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .acc-row.is-missing .acc-n { color: var(--warn); }
 .acc-row.is-missing .acc-state { color: var(--warn); }
 .acc-row.is-other .acc-state { color: var(--muted); }
+/* the Equip list: weapon, armour, footwear, then the accessories */
+.acc-row { --ind: 76px; row-gap: 1px; padding-top: 6px; padding-bottom: 6px; }
+.acc-n { display: flex; align-items: center; min-width: 0; }
+.eq-kind { flex: none; width: calc(var(--ind) - 8px); margin-right: 8px; font: 600 0.74rem var(--cond); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.eq-none { color: var(--muted); font-weight: 500; }
+.acc-row .acc-fx { padding-left: var(--ind); }
+.acc-how { grid-column: 1 / -1; padding-left: var(--ind); color: var(--note-ink); font-size: 0.82rem; font-weight: 500; line-height: 1.35; }
+.acc-gain { color: var(--ok); font-weight: 700; }
+.acc-later { color: var(--muted); }
+.acc-later::before { content: "➜ "; color: #18a5c7; }
+.acc-row.is-wait .acc-n, .acc-row.is-wait .acc-state { color: #9a6a12; }
+.swap .gain { color: var(--ok); font-weight: 700; }
+.todo-wait { margin-top: 16px; }
+.mats-line { margin: 12px 0 0; }
+.bag-block { margin: 14px 0; }
 
 /* ---------- coverage ---------- */
 .matrix th, .matrix td { vertical-align: middle; }
@@ -798,14 +817,19 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .find-table .gi, .ref-table .gi, .art-name .gi, .st-name-cell .gi { --gs: 24px; margin-right: 7px; }
 .gear .gi { --gs: 24px; margin-right: 6px; }
 .has-art .gear:not(.gear-none) b { display: none; } /* the icon says what kind of gear it is */
+.has-art .acc-row { --ind: 30px; }
+.has-art .acc-n .thing ~ .eq-kind, .has-art .eq-kind:has(+ .thing) { display: none; }
 .tip .gi { --gs: 24px; margin: 0 2px 0 0; }
 .tip-val .gi { --gs: 22px; margin: 0 1px 0 0; }
 
 /* portraits */
-.avatar.has-face { background: none; box-shadow: none; overflow: visible; }
-.avatar.has-face img { display: block; width: 118%; height: 118%; max-width: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45)); }
+.avatar.has-face { position: relative; background: none; box-shadow: none; overflow: visible; }
+.avatar.has-face img { /* square whatever the box does: a stretched medallion reads as an oval */
+  position: absolute; left: 50%; top: 50%; width: 118%; height: auto; aspect-ratio: 1; max-width: none; transform: translate(-50%, -50%);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
 .jump a.jump-who .avatar.has-face { width: 30px; height: 30px; opacity: 1; }
-.medal-face .avatar.has-face { width: 100%; height: 100%; }
+.medal-face .avatar.has-face { width: 100%; height: auto; aspect-ratio: 1; }
 .goes .avatar-xs { margin-right: 4px; }
 .has-art .matrix thead .col-who .avatar { width: 30px; height: 30px; }
 .has-art .matrix thead .col-name { display: none; }

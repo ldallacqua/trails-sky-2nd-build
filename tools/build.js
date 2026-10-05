@@ -18,7 +18,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { loadGame, loadTable, ELEMENTS, SLOT_ORDER } = require('./read-save.js');
+const { loadGame, loadTable, loadShop, ELEMENTS, SLOT_ORDER, CHAPTER_FLAG } = require('./read-save.js');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'chapters-src');
@@ -134,6 +134,98 @@ function itemInfo(id) {
 }
 const kindOf = (id) => itemTable.b[itemRow.get(id) + 0x28] + '/' + itemTable.b[itemRow.get(id) + 0x29];
 
+// ---- weapons, armour and footwear ----------------------------------------------
+// What each piece gives, who can use it, when shops sell it, what it is upgraded from and at
+// what cost, and which chests hold one: from the item, shop, chest and place tables.
+const shop = loadShop();
+const chapterOf = (flag) => Math.floor((flag - CHAPTER_FLAG) / 1000);
+const gate = (flags) => { const f = flags.filter((x) => x >= CHAPTER_FLAG); return f.length ? Math.min(...f) : 0; };
+// [flag that opens it, flag that closes it] for an item on one of the shop lists; 0 = no such flag
+function shopWindow(list, id) {
+  const r = shop.stock.find((x) => x.list === list && x.item === id);
+  if (!r || (r.from.length && !gate(r.from))) return null; // not listed, or opened by something other than the story
+  return [gate(r.from), gate(r.until)];
+}
+function recipeOf(id) {
+  const r = shop.recipes.get(id);
+  if (!r || r.count !== 1 || !game.items.get(r.base)) return null;
+  return [game.items.get(r.base), r.mats.map(([m, n]) => [game.items.get(m), n])];
+}
+
+// chests: item id -> [{ where, tag }]
+const placeTable = loadTable('t_place.tbl');
+const placesOn = new Map(); // map file -> names of the places on it, in table order
+for (const e of placeTable.rows('PlaceTableData')) {
+  const map = placeTable.str(placeTable.b.readUInt32LE(e + 8));
+  const name = placeTable.str(placeTable.b.readUInt32LE(e + 96)).trim();
+  if (name) (placesOn.get(map) || placesOn.set(map, []).get(map)).push(name);
+}
+// A chest is named after the road it is on ("Malga_Treasure07_r") and filed under its map.
+// Roads share one map per region, so the road is matched by name; a dungeon has its own map.
+function chestPlace(map, object) {
+  const names = placesOn.get(map) || [];
+  const words = (/^[A-Za-z]+/.exec(object) || [''])[0].match(/[A-Z][a-z]+/g) || [];
+  const shared = (n) => words.filter((w) => n.indexOf(w) !== -1).length;
+  const hits = words.length ? names.filter((n) => n.indexOf(words[0]) === 0) : [];
+  if (hits.length) return hits.sort((a, b) => shared(b) - shared(a) || a.length - b.length)[0];
+  return names[0] || '';
+}
+const chestsOf = new Map();
+const tbox = loadTable('t_tbox.tbl');
+for (const e of tbox.rows('TBoxParam')) {
+  const map = tbox.str(tbox.b.readUInt32LE(e)), object = tbox.str(tbox.b.readUInt32LE(e + 8));
+  const monster = tbox.str(tbox.b.readUInt32LE(e + 24)).indexOf('M') !== -1;
+  const at = tbox.b.readUInt32LE(e + 48), n = tbox.b.readUInt32LE(e + 56);
+  for (let k = 0; k + 1 < n; k += 2) { // pairs of item id, count
+    const id = tbox.b.readUInt16LE(at + k * 2);
+    if (!chestsOf.has(id)) chestsOf.set(id, []);
+    chestsOf.get(id).push({ where: chestPlace(map, object), tag: monster ? 'monster chest' : '' });
+  }
+}
+
+// refined materials: name -> [what it is made from, how many]
+const refine = {};
+for (const [id, r] of shop.recipes) {
+  if (itemRow.has(id) && kindOf(id) === '20/5' && !r.mats.length && game.items.get(r.base)) refine[game.items.get(id)] = [game.items.get(r.base), r.count];
+}
+
+const GEAR_KIND = { 11: 'w', 12: 'a', 13: 'f' };
+const STAT_KEYS = { 'Max HP': 'HP', 'Max EP': 'EP' };
+const allGear = {};   // name -> what the page needs to rank it, cost it and say where it comes from
+const gearChests = {}; // name -> { where, tag }, kept per chapter so a place name never leaks early
+for (const [id, name] of game.items) {
+  const o = itemRow.get(id);
+  const k = o == null ? null : GEAR_KIND[itemTable.b[o + 0x28]];
+  if (!k || !name || allGear[name]) continue;
+  const b = itemTable.b;
+  const s = {};
+  for (const [at, label] of STAT_FIELDS) { const v = b.readInt32LE(o + at); if (v) s[STAT_KEYS[label] || label] = v; }
+  const g = { k, s };
+  if (k === 'w') { // the first entry of the wielder list is who the weapon is for
+    const cid = b.readUInt16LE(b.readUInt32LE(o + 0x08));
+    g.who = game.people.has(cid) ? game.people.get(cid).id : 'c' + cid;
+  }
+  const extra = itemInfo(id).extra.join(', ');
+  if (extra) g.x = extra;
+  if (game.icons.get(id) != null) g.i = game.icons.get(id);
+  g.p = b.readUInt32LE(o + 0xd0);
+  const sell = shopWindow(k === 'w' ? 1006 : 1007, id), up = shopWindow(1002, id), from = recipeOf(id);
+  if (sell) g.sell = sell;
+  if (up && from) { g.up = up; g.from = from; }
+  if (chestsOf.has(id)) { g.n = chestsOf.get(id).length; gearChests[name] = chestsOf.get(id)[0]; }
+  allGear[name] = g;
+}
+// The chapter a piece first turns up in: when shops start selling it, or when its upgrade opens.
+// A chest find has neither, so it takes the chapter of the upgrade made from it.
+for (const g of Object.values(allGear)) {
+  const opens = g.sell ? g.sell[0] : (g.up ? g.up[0] : 0);
+  if (opens) g.ch = chapterOf(opens);
+}
+for (const g of Object.values(allGear)) {
+  const base = g.from && allGear[g.from[0]];
+  if (base && base.ch == null && g.ch != null) base.ch = g.ch;
+}
+
 // ---- chapters ----------------------------------------------------------------
 const FX = require(path.join(SRC, '_fx.js'));
 const problems = [];
@@ -177,12 +269,25 @@ function buildChapter(src) {
       }
     }
     for (const a of c.accessories || []) if (!idByName.has(a)) problems.push(where + ': accessory "' + a + '" is not in the game table');
+    // Which attack stat their gear should feed. Said in the notes, or read off the build:
+    // someone slotted for Arts (Mind or Cast) wants ATS, everyone else STR.
+    if (c.stat && c.stat !== 'str' && c.stat !== 'ats') problems.push(where + ': stat must be "str" or "ats"');
+    const forArts = (n) => /^(Mind|Cast) \d$/.test(n || '');
+    const caster = Object.values(slots).some((s) => forArts(s.t) || forArts(s.u));
     return {
-      id: c.id, name: game.people.get(cid).name, role: c.role || '',
+      id: c.id, name: game.people.get(cid).name, role: c.role || '', stat: c.stat || (caster ? 'ats' : 'str'),
       lines: lay.lines, locks: lay.locks, slots,
       accessories: c.accessories || [], notes: c.notes || []
     };
   }).filter(Boolean);
+  for (const id of src.gearOrder || []) {
+    if (!characters.some((c) => c.id === id)) problems.push('ch' + src.n + ': gearOrder has ' + id + ' but there is no build for them');
+  }
+  // where the chest finds of this chapter and the ones before it are
+  const gearSrc = {};
+  for (const name of Object.keys(gearChests)) {
+    if (allGear[name].ch != null && allGear[name].ch <= src.n && gearChests[name].where) gearSrc[name] = gearChests[name];
+  }
   for (const name of Object.keys(src.sources || {})) use(name, 'ch' + src.n + ' sources');
   for (const id of (src.party && src.party.pick) || []) {
     if (!characters.some((c) => c.id === id)) problems.push('ch' + src.n + ': party.pick has ' + id + ' but there is no build for them');
@@ -190,6 +295,7 @@ function buildChapter(src) {
   return {
     n: src.n, title: src.title, region: src.region || '', intro: src.intro || [],
     party: src.party || {}, sources: src.sources || {}, quartz, characters,
+    gearOrder: src.gearOrder || [], gearSrc,
     sections: src.sections || [], source: src
   };
 }
@@ -234,6 +340,9 @@ for (const [id, name] of game.items) {
   if (kind === '14/11' && !allAccessories[name]) {
     const info = itemInfo(id);
     allAccessories[name] = [info.stats.concat(info.extra).join(', '), info.res, game.icons.get(id)];
+    // an upgraded accessory also says what it is made from, and when that opens
+    const up = shopWindow(1002, id), from = recipeOf(id);
+    if (up && from) allAccessories[name].push(from, up);
   } else if ((kind === '1/1' || kind === '1/2') && !supplies[name]) supplies[name] = itemInfo(id).desc;
 }
 
@@ -246,9 +355,10 @@ fs.writeFileSync(path.join(ROOT, 'game-data.js'),
   '// Generated by tools/build.js from the game’s own tables. Do not edit.\n' +
   '// Sealed like the chapter files, because it lists every quartz in the game by name.\n' +
   'window.GAME = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob("' +
-  seal({ chapters: built.map((c) => c.n), arts, quartz: allQuartz, accessories: allAccessories, supplies }) +
+  seal({ chapters: built.map((c) => c.n), arts, quartz: allQuartz, accessories: allAccessories, gear: allGear, refine, supplies }) +
   '"), function (c) { return c.charCodeAt(0); })));\n');
-console.log('game-data.js  ' + arts.length + ' Arts, ' + Object.keys(allQuartz).length + ' quartz, ' + Object.keys(allAccessories).length + ' accessories, chapters ' + built.map((c) => c.n).join(' '));
+console.log('game-data.js  ' + arts.length + ' Arts, ' + Object.keys(allQuartz).length + ' quartz, ' + Object.keys(allAccessories).length + ' accessories, ' +
+  Object.keys(allGear).length + ' weapons, armour and footwear, chapters ' + built.map((c) => c.n).join(' '));
 
 // --check-fx: put the hand-written effect lines next to what the table says, to catch slips
 if (args.includes('--check-fx')) {

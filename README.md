@@ -26,9 +26,10 @@ It updates a few seconds after the game saves. No reload, no buttons, nothing to
 
 ## Highlights
 
-- **Follows the save.** Chapter, active party and reserve, every slot, weapon, armour and accessory, the whole bag, and HP, EP and CP as of the last save.
+- **Follows the save.** Chapter, active party and reserve, every slot, weapon, armour and accessory, the whole bag, which shop stock the story has opened, and HP, EP and CP as of the last save.
 - **Works out the Arts for you.** Each orbment's lines are traced the way the game does it, the elemental values are added up, and the page lists every Art that layout can cast, with EP cost.
 - **Plans with what you own.** A slot can name a target quartz and a stand-in. The page picks the best one you actually have and tells you what to swap when a better one turns up.
+- **Covers everything you equip.** Weapon, armour and footwear are ranked per character from the game's item, shop and chest tables: what shops sell at this point of the story, which chest holds what, and what an upgrade costs. The page gives each one-copy piece to whoever gains most, checks the cost against the materials in your bag, and sets aside upgrades that are not worth the U-Material.
 - **Spoiler-safe.** Notes for every chapter are in the repo, sealed. The page and the server only open the chapter your save has reached.
 - **Checked against the game's own tables.** Slot layouts, element locks, quartz values and effects, accessory resistances and Art requirements are read from the game files, not typed by hand.
 - **Looks like the game.** Parchment and gears, banner titles, cream list windows with a red cursor, navy status cards, Bracer Notebook pages. All of it is drawn in CSS.
@@ -39,6 +40,14 @@ It updates a few seconds after the game saves. No reload, no buttons, nothing to
 
 <p align="center">
   <img src="docs/overview.png" alt="Overview: chapter, party, how many changes are waiting and how many upgrades are still to get, above the chapter notes" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/next-steps.png" alt="Next steps: per character, which quartz to move and which gear to upgrade, with the cost in materials and what each change adds" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/equipment.png" alt="A character screen: the orbment dial with the Equipment list under it, next to the line values and usable Arts" width="900">
 </p>
 
 <p align="center">
@@ -102,7 +111,7 @@ The notes cover every chapter, and none of that should leak to someone who is st
 
 Earlier versions of these notes were typed by hand and got things wrong: items under the wrong name, a quartz in a slot it cannot go in. So the page's data is now built, not written.
 
-`tools/build.js` reads the game's own tables and takes from them every character's line layout and slot locks, every quartz's colour, elemental value and effect, every accessory's stats and resistances, and every Art's requirements, EP cost and description. The chapter notes only say *which* quartz goes *where*. The build stops with an error if a note names something that does not exist, puts a quartz in a slot that is locked to another element, or slots two of the same kind on one orbment.
+`tools/build.js` reads the game's own tables and takes from them every character's line layout and slot locks, every quartz's colour, elemental value and effect, every accessory's stats and resistances, every Art's requirements, EP cost and description, and for weapons, armour and footwear the stats, shop stock by story point, upgrade recipes and chest locations. The chapter notes only say *which* quartz goes *where*. The build stops with an error if a note names something that does not exist, puts a quartz in a slot that is locked to another element, or slots two of the same kind on one orbment.
 
 Names are the English ones from the game's files, so what the page says is what the menu says.
 

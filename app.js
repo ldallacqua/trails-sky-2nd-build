@@ -94,6 +94,251 @@
     });
   }
 
+  // ---- weapons, armour and footwear, from the game's own tables ----
+  var GEAR_SLOTS = [{ key: 'weapon', k: 'w', label: 'Weapon' }, { key: 'armor', k: 'a', label: 'Armor' }, { key: 'shoes', k: 'f', label: 'Footwear' }];
+  var GEAR_KIND = { w: 'Weapon', a: 'Armor', f: 'Footwear' };
+  var GEAR_STATS = ['STR', 'ATS', 'DEF', 'ADF', 'SPD', 'MOV', 'EVA', 'AEV', 'CRT', 'ACC', 'HP', 'EP'];
+  var GEAR_PCT = { EVA: 1, AEV: 1, CRT: 1, ACC: 1 };
+  function gear(name) { return (G.gear && name && G.gear[name]) || null; }
+  // What a piece is worth to someone who attacks with STR, or with ATS. Their own attack stat
+  // and both defences count in full, the other attack stat barely. A point of SPD counts as
+  // eight, which is the rate the game's own accessories trade it at.
+  function gearScore(name, stat) {
+    var g = gear(name);
+    if (!g) return 0;
+    var w = { STR: stat === 'str' ? 1 : 0.2, ATS: stat === 'ats' ? 1 : 0.2, DEF: 1, ADF: 1, SPD: 8, MOV: 2, EVA: 2, AEV: 2, CRT: stat === 'str' ? 2 : 0.5, ACC: 1, HP: 0.05, EP: 0.1 };
+    var sum = 0;
+    Object.keys(g.s).forEach(function (k) { sum += g.s[k] * (w[k] || 0); });
+    return sum;
+  }
+  // (the space inside the strings of signed() and matsText() is a no-break space, so "STR +70" and "×2" never split across lines)
+  function signed(k, v) { return k + ' ' + (v > 0 ? '+' : '−') + Math.abs(v) + (GEAR_PCT[k] ? '%' : ''); }
+  function gearStats(name) {
+    var g = gear(name);
+    if (!g) return '';
+    var bits = GEAR_STATS.filter(function (k) { return g.s[k]; }).map(function (k) { return signed(k, g.s[k]); });
+    if (g.x) bits.push(g.x);
+    return bits.join(' · ');
+  }
+  // what changes when `to` replaces `from`
+  function gearGain(to, from) {
+    var a = gear(to), b = gear(from);
+    if (!a) return '';
+    return GEAR_STATS.map(function (k) {
+      var d = (a.s[k] || 0) - ((b && b.s[k]) || 0);
+      return d ? signed(k, d) : '';
+    }).filter(Boolean).join(', ');
+  }
+  // Has the story reached the point where a tier of shop stock opens or closes? The save says
+  // so exactly. Without one, the whole chapter's stock is taken to be in.
+  function reached(flag) {
+    if (!flag) return true;
+    if (live && live.story) return live.story.indexOf(flag) !== -1;
+    return Math.floor((flag - 16000) / 1000) <= chapterN;
+  }
+  function isOpen(win) { return !!win && reached(win[0]) && !(win[1] && reached(win[1])); }
+  function matsText(mats) { return mats.map(function (x) { return x[0] + ' ×' + x[1]; }).join(', '); }
+  function mira(n) { return String(n).replace(/\B(?=(\d{3})+$)/g, ',') + ' mira'; }
+  function chestText(name) {
+    var src = CH && CH.gearSrc && CH.gearSrc[name];
+    return src ? 'chest, ' + src.where + (src.tag ? ' (' + src.tag + ')' : '') : '';
+  }
+  // how to get the piece a plan entry names, in a few words
+  function gearHow(e) {
+    var t = '';
+    if (e.how === 'own') t = e.where;
+    else if (e.how === 'find') t = chestText(e.name);
+    else if (e.how === 'craft') {
+      var base = !live ? e.base + (chestText(e.base) ? ' (' + chestText(e.base) + ')' : '')
+        : e.baseWhere === 'worn' ? 'the ' + e.base + ' worn now'
+          : e.baseWhere === 'in your bag' ? 'the ' + e.base + ' in your bag' : 'the ' + e.base + ' (' + e.baseWhere + ')';
+      t = 'upgrade ' + base + ' at an orbal factory · ' + matsText(e.mats);
+    } else if (e.how === 'buy') t = 'buy it at a weapon shop · ' + mira(e.price);
+    else if (e.how === 'buycraft') t = 'buy ' + e.base + ' (' + mira(e.price) + '), then upgrade it at an orbal factory · ' + matsText(e.mats);
+    if (e.make) t += ' (' + e.make.map(function (x) { return x[0] + ' ×' + x[1] + ' is made from ' + x[2] + ' ×' + x[3]; }).join('; ') + ')';
+    if (e.short) t += ' — short by ' + matsText(e.short);
+    return t;
+  }
+
+  // Who should wear what. Ranks every piece each character could use, gives each piece to
+  // whoever gets the most out of it, and works out how to get there: equip a spare, upgrade
+  // something you own, or buy. Reserve characters only get what is lying around.
+  function planGear(m, isActive) {
+    m.gear = {}; m.gearWait = []; m.gearOptional = []; m.gearLater = []; m.matsUsed = {}; m.matsHave = {};
+    m.gearStale = !!live && !live.bag.gear; // an older live server is still running: it does not report spare gear
+    if (!G.gear || m.gearStale) return;
+    var order = (CH.gearOrder || []).concat(CH.characters.map(function (c) { return c.id; }));
+    order = order.filter(function (id, i) { return order.indexOf(id) === i && m.alloc[id]; });
+    var inScope = function (g) { return g.ch != null && g.ch <= chapterN; };
+
+    var free = {}, bag = {}, mats = {}, holders = [], waiting = {};
+    if (live) {
+      (live.bag.gear || []).forEach(function (x) { bag[x.name] = x.count; free[x.name] = (free[x.name] || 0) + x.count; });
+      (live.bag.materials || []).forEach(function (x) { mats[x.name] = x.count; });
+      Object.keys(live.characters).forEach(function (id) {
+        var lc = live.characters[id];
+        if (isActive(id) && !m.alloc[id]) return; // in the party without notes: their gear is theirs
+        GEAR_SLOTS.forEach(function (sl) {
+          if (!lc[sl.key]) return;
+          free[lc[sl.key]] = (free[lc[sl.key]] || 0) + 1;
+          holders.push({ name: lc[sl.key], id: id, who: lc.name, bench: !isActive(id) });
+        });
+      });
+    } else {
+      // no save to go by: take every chest of the chapters so far as opened
+      Object.keys(G.gear).forEach(function (n) { if (G.gear[n].n && inScope(G.gear[n])) free[n] = G.gear[n].n; });
+    }
+    var owned = JSON.parse(JSON.stringify(free));
+    m.matsHave = JSON.parse(JSON.stringify(mats));
+
+    // takes one free copy and says where it physically is
+    function claim(name, id) {
+      free[name]--;
+      if (!live) return '';
+      var i, pick = -1;
+      for (i = 0; i < holders.length; i++) if (holders[i].name === name && holders[i].id === id) { holders.splice(i, 1); return 'worn'; }
+      if (bag[name] > 0) { bag[name]--; return 'in your bag'; }
+      for (i = 0; i < holders.length && pick === -1; i++) if (holders[i].name === name && holders[i].bench) pick = i;
+      for (i = holders.length - 1; i >= 0 && pick === -1; i--) if (holders[i].name === name) pick = i;
+      return pick === -1 ? 'in your bag' : 'take it from ' + holders.splice(pick, 1)[0].who;
+    }
+    function reach(n, id, mayBuy) {
+      var g = G.gear[n], e = null;
+      // the bench keeps what it wears and takes from the bag, never from someone else
+      var mine = holders.some(function (h) { return h.name === n && h.id === id; });
+      if (free[n] > 0 && (mayBuy || mine || bag[n] > 0)) {
+        var w = claim(n, id);
+        return w === 'worn' ? { how: 'ok' } : { how: live ? 'own' : 'find', where: w };
+      }
+      if (!mayBuy) return null;
+      if (g.from && isOpen(g.up)) {
+        var base = g.from[0], bg = G.gear[base];
+        if (free[base] > 0) e = { how: 'craft', base: base, baseWhere: claim(base, id), mats: g.from[1] };
+        else if (bg && isOpen(bg.sell)) e = { how: 'buycraft', base: base, mats: g.from[1], price: bg.p };
+      }
+      if (!e && isOpen(g.sell)) e = { how: 'buy', price: g.p };
+      return e;
+    }
+    // a chest find nobody has yet: the piece itself, or the piece its upgrade is made from
+    function chestRoot(n) {
+      var g = G.gear[n];
+      var root = g.n ? n : (g.from && G.gear[g.from[0]] && G.gear[g.from[0]].n ? g.from[0] : null);
+      if (!root || !CH.gearSrc || !CH.gearSrc[root]) return null;
+      if (owned[root] > 0 || owned[root + '+'] > 0 || (waiting[root] || 0) >= G.gear[root].n) return null;
+      return root;
+    }
+
+    // every piece a character could use in a slot, best first
+    function candidates(id, sl, has) {
+      var stat = buildOf(id).stat;
+      return Object.keys(G.gear).filter(function (n) {
+        var g = G.gear[n];
+        return g.k === sl.k && (sl.k !== 'w' || g.who === id) && (owned[n] > 0 || inScope(g));
+      }).map(function (n) { return { id: id, n: n, v: gearScore(n, stat), worn: n === has ? 1 : 0 }; })
+        .sort(function (p, q) { return q.v - p.v || q.worn - p.worn || p.n.localeCompare(q.n); });
+    }
+    // the best they can have without the piece named: what they wear instead of an upgrade not worth making
+    function instead(e, anyCost) {
+      var sl = GEAR_SLOTS.filter(function (s) { return s.key === e.key; })[0];
+      var list = candidates(e.id, sl, e.has);
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].n === e.name) continue;
+        var r = reach(list[i].n, e.id, isActive(e.id));
+        if (r && r.mats && !anyCost) { if (r.how === 'craft') free[r.base]++; continue; }
+        if (r) { r.name = list[i].n; return r; }
+      }
+      return null;
+    }
+    // the best piece of the shop line, bought and upgraded: what a chest piece has to beat
+    function shopBest(id, sl) {
+      var list = candidates(id, sl, null).filter(function (p) {
+        var g = G.gear[p.n], base = g.from && G.gear[g.from[0]];
+        return isOpen(g.sell) || (base && isOpen(g.up) && isOpen(base.sell));
+      });
+      return list.length ? list[0].v : 0;
+    }
+
+    order.forEach(function (id) { m.gear[id] = {}; });
+    [order.filter(isActive), order.filter(function (id) { return !isActive(id); })].forEach(function (group, pass) {
+      var mayBuy = pass === 0 || !live;
+      GEAR_SLOTS.forEach(function (sl) {
+        // every (character, piece) pair, best fit first; ties go to the earlier character
+        var pairs = [];
+        group.forEach(function (id, rank) {
+          candidates(id, sl, live ? live.characters[id][sl.key] : null).forEach(function (p) { p.rank = rank; pairs.push(p); });
+        });
+        pairs.sort(function (p, q) { return q.v - p.v || p.rank - q.rank || q.worn - p.worn || p.n.localeCompare(q.n); });
+        pairs.forEach(function (p) {
+          var mine = m.gear[p.id];
+          if (mine[sl.key] && mine[sl.key].name) return;
+          var e = reach(p.n, p.id, mayBuy);
+          if (e) {
+            e.name = p.n; e.later = mine[sl.key] ? mine[sl.key].later : null;
+            mine[sl.key] = e;
+            return;
+          }
+          var root = mayBuy && live && !(mine[sl.key] && mine[sl.key].later) ? chestRoot(p.n) : null;
+          if (root) {
+            waiting[root] = (waiting[root] || 0) + 1;
+            mine[sl.key] = { later: { name: root, where: chestText(root) } };
+          }
+        });
+        group.forEach(function (id) {
+          var b = buildOf(id), lc = live ? live.characters[id] : null;
+          var e = m.gear[id][sl.key] || {};
+          var has = lc ? lc[sl.key] : null;
+          if (!e.name) { e.name = has; e.how = 'keep'; }
+          e.id = id; e.who = b.name; e.key = sl.key; e.label = sl.label; e.has = has;
+          e.gain = e.how === 'ok' || e.how === 'keep' ? '' : gearGain(e.name, has);
+          // what the piece adds: over what is worn, or with no save, over the piece it would replace
+          e.worth = gearScore(e.name, b.stat) - (live ? gearScore(has, b.stat) : e.how === 'buycraft' ? gearScore(e.base, b.stat) : shopBest(id, sl));
+          m.gear[id][sl.key] = e;
+          if (e.later) m.gearLater.push({ name: e.later.name, id: id, who: b.name, label: sl.label });
+        });
+      });
+    });
+
+    // Upgrades cost materials. Pay for the ones that give the most per U-Material first; what
+    // cannot be afforded yet waits.
+    // A refined material is worth what it is made from: U-Material ×5 a piece.
+    var refine = G.refine || {};
+    var unit = function (name) { return name === 'U-Material' ? 1 : (refine[name] && refine[name][0] === 'U-Material' ? refine[name][1] : (/^U-Material/.test(name) ? 50 : 0)); };
+    var units = function (e) { return e.mats.reduce(function (n, x) { return n + unit(x[0]) * x[1]; }, 0) || 1; };
+    var steps = [];
+    order.forEach(function (id) { GEAR_SLOTS.forEach(function (sl) { var e = m.gear[id][sl.key]; if (e.mats) steps.push(e); }); });
+    steps.sort(function (a, b) { return b.worth / units(b) - a.worth / units(a); });
+    steps.forEach(function (e) {
+      // under six points per U-Material is a small gain for the cost: offered, not planned
+      if (e.worth / units(e) < 6) {
+        var opt = { id: e.id, who: e.who, label: e.label, has: e.has, name: e.name, text: gearHow(e), gain: e.gain };
+        var alt = instead(e, !live);
+        if (alt) {
+          ['name', 'how', 'where', 'base', 'baseWhere', 'mats', 'price'].forEach(function (k) { if (alt[k] == null) delete e[k]; else e[k] = alt[k]; });
+          opt.gain = gearGain(opt.name, e.name);
+          e.gain = e.how === 'ok' ? '' : gearGain(e.name, e.has);
+          e.option = opt;
+        } else e.minor = true;
+        m.gearOptional.push(opt);
+        return;
+      }
+      if (!live) return;
+      var pool = JSON.parse(JSON.stringify(mats)), make = [];
+      e.mats.forEach(function (x) {
+        var lack = x[1] - (pool[x[0]] || 0), r = refine[x[0]];
+        if (lack > 0 && r && (pool[r[0]] || 0) >= lack * r[1]) { // refine what is missing
+          pool[r[0]] -= lack * r[1]; pool[x[0]] = (pool[x[0]] || 0) + lack;
+          make.push([x[0], lack, r[0], lack * r[1]]);
+        }
+      });
+      var short = e.mats.filter(function (x) { return (pool[x[0]] || 0) < x[1]; }).map(function (x) { return [x[0], x[1] - (pool[x[0]] || 0)]; });
+      if (short.length) { e.short = short; m.gearWait.push(e); return; }
+      e.mats.forEach(function (x) { pool[x[0]] -= x[1]; });
+      if (make.length) e.make = make;
+      Object.keys(m.matsHave).forEach(function (n) { if (pool[n] < mats[n]) m.matsUsed[n] = (m.matsUsed[n] || 0) + mats[n] - pool[n]; });
+      mats = pool;
+    });
+  }
+
   // ---- the model: who is in the party, what each slot should hold right now, what to move ----
   function buildOf(id) {
     return CH.characters.filter(function (c) { return c.id === id; })[0] || null;
@@ -180,6 +425,15 @@
       return r;
     });
 
+    planGear(m, isActive);
+    // chest finds the party is still waiting for join the upgrade list
+    var gearRow = {};
+    m.gearLater.forEach(function (x) {
+      var r = gearRow[x.name];
+      if (!r) { r = gearRow[x.name] = { name: x.name, gear: true, wants: [], got: 0, done: false, src: CH.gearSrc[x.name] || null }; m.rows.push(r); }
+      r.wants.push({ id: x.id, who: x.who, label: x.label, got: false });
+    });
+
     if (live) planMoves(m, isActive);
     return m;
   }
@@ -233,12 +487,19 @@
         if (has === a.name) return;
         list.push({ id: b.id, who: b.name, kind: 'slot', pos: POS_NAME[k], from: has || 'empty', to: a.name, where: isActive(b.id) ? source(a.name, b.id) : '' });
       });
+      GEAR_SLOTS.forEach(function (sl) {
+        var e = m.gear[b.id] && m.gear[b.id][sl.key];
+        if (!e || e.how === 'ok' || e.how === 'keep' || e.short || e.minor) return;
+        list.push({ id: b.id, who: b.name, kind: 'gear', pos: sl.label, from: e.has || 'empty', to: e.name, where: gearHow(e), note: e.gain });
+      });
       b.accessories.forEach(function (acc) {
         if (lc.accessories.indexOf(acc) !== -1) return;
         var where = '';
         if (isActive(b.id)) {
+          var made = G.accessories[acc] || [];
           if (bagAcc[acc] > 0) { bagAcc[acc]--; where = 'in your bag'; }
           else if (wornBy[acc] && wornBy[acc].length) where = 'take it from ' + wornBy[acc].shift();
+          else if (made[3] && isOpen(made[4]) && bagAcc[made[3][0]] > 0) { bagAcc[made[3][0]]--; where = 'upgrade the ' + made[3][0] + ' in your bag at an orbal factory · ' + matsText(made[3][1]); }
           else where = 'none spare';
         }
         list.push({ id: b.id, who: b.name, kind: 'acc', pos: 'Accessory', from: null, to: acc, where: where });
@@ -406,16 +667,17 @@
   function resistText(res) {
     return Object.keys(res || {}).map(function (s) { return (s === 'Status Ailments' ? 'all status ailments' : s) + ' ' + res[s] + '%'; }).join(', ');
   }
-  // where your copies of a quartz or accessory are
+  // where your copies of a quartz, accessory or piece of gear are
   function ownedText(name, kind) {
     if (!live) return '';
     var on = [], bag = 0;
     Object.keys(live.characters).forEach(function (id) {
       var lc = live.characters[id];
       if (kind === 'quartz') ORDER.forEach(function (k) { if (lc.slots[k] === name) on.push(lc.name); });
+      else if (kind === 'gear') GEAR_SLOTS.forEach(function (sl) { if (lc[sl.key] === name) on.push(lc.name); });
       else lc.accessories.forEach(function (a) { if (a === name) on.push(lc.name); });
     });
-    live.bag[kind === 'quartz' ? 'quartz' : 'accessories'].forEach(function (x) { if (x.name === name) bag = x.count; });
+    (live.bag[kind === 'quartz' ? 'quartz' : kind === 'gear' ? 'gear' : 'accessories'] || []).forEach(function (x) { if (x.name === name) bag = x.count; });
     var bits = [];
     if (on.length) bits.push((kind === 'quartz' ? 'slotted on ' : 'worn by ') + on.join(', '));
     if (bag) bits.push(bag + ' spare in your bag');
@@ -477,7 +739,20 @@
     var res = resistText(g[1]);
     if (res) tipLine(box, 'tip-fx', 'Resists ' + res);
     if (!g[0] && !res) tipLine(box, 'tip-meta', 'No stats on record.');
+    if (g[3]) tipLine(box, 'tip-meta', 'Upgraded from ' + g[3][0] + ' at an orbal factory: ' + matsText(g[3][1]));
     return tipLine(box, 'tip-meta', ownedText(name, 'accessory'));
+  }
+  function tipGear(name) {
+    var g = gear(name);
+    var box = tipFrame(itemIcon(g.i), name, GEAR_KIND[g.k]);
+    tipLine(box, 'tip-fx', gearStats(name) || 'No stats on record.');
+    if (g.from) tipLine(box, 'tip-meta', 'Upgraded from ' + g.from[0] + ' at an orbal factory: ' + matsText(g.from[1]) + (isOpen(g.up) ? '' : ' · not on offer right now'));
+    var plus = gear(name + '+');
+    if (plus && plus.from && plus.from[0] === name && isOpen(plus.up)) tipLine(box, 'tip-meta', 'Upgrades to ' + name + '+: ' + gearStats(name + '+'));
+    if (g.sell && reached(g.sell[0])) tipLine(box, 'tip-meta', isOpen(g.sell) ? 'Sold at weapon shops · ' + mira(g.p) : 'No longer sold.');
+    var chest = chestText(name);
+    if (chest) tipLine(box, 'tip-meta', 'Found in a ' + chest.replace(/^chest, /, 'chest: '));
+    return tipLine(box, 'tip-meta', ownedText(name, 'gear'));
   }
   function tipArt(a, casters) {
     var box = tipFrame(mark(a.el, 'art'), a.name, 'EP ' + a.ep);
@@ -491,12 +766,13 @@
     return tipLine(tipFrame(itemIcon(1), name), 'tip-fx', text || 'No description on record.');
   }
   function tipText(title, text) { return tipLine(tipFrame(null, title), 'tip-meta', text); }
-  // a quartz or accessory name with its icon, and a tip
+  // a quartz, accessory or gear name with its icon, and a tip
   function thing(name, tag, cls) {
-    var isQ = !!G.quartz[name];
+    var isQ = !!G.quartz[name], g = isQ ? null : gear(name);
     var n = el(tag || 'span', (cls ? cls + ' ' : '') + 'thing');
-    add(n, isQ ? mark(quartz(name).el, 'quartz') : itemIcon((G.accessories[name] || [])[2]), document.createTextNode(name));
+    add(n, isQ ? mark(quartz(name).el, 'quartz') : itemIcon(g ? g.i : (G.accessories[name] || [])[2]), document.createTextNode(name));
     if (isQ) tip(n, function () { return tipQuartz(name); });
+    else if (g) tip(n, function () { return tipGear(name); });
     else if (G.accessories[name]) tip(n, function () { return tipAccessory(name); });
     return n;
   }
@@ -510,6 +786,7 @@
     what.appendChild(thing(it.to, 'strong', 'to'));
     li.appendChild(what);
     if (it.where) li.appendChild(el('span', 'where', it.where));
+    if (it.note) li.appendChild(el('span', 'where gain', it.note));
     return li;
   }
 
@@ -713,29 +990,47 @@
     }
     side.appendChild(arts);
 
-    if (b && b.accessories.length || lc) {
-      var acc = el('div', 'window acc');
-      acc.appendChild(pillHead('Accessories', lc ? 'Worn' : null));
-      var ul = el('ul', 'rows');
-      var want = b ? b.accessories : [];
-      want.forEach(function (a) {
-        var on = lc && lc.accessories.indexOf(a) !== -1;
-        var li = el('li', 'row acc-row' + (lc ? (on ? ' is-on' : ' is-missing') : ''));
-        add(li, thing(a, 'span', 'acc-n'), el('span', 'acc-fx', accessoryText(a)));
-        if (lc) li.appendChild(el('span', 'acc-state', on ? '✓' : 'not worn'));
-        ul.appendChild(li);
-      });
-      if (lc) lc.accessories.forEach(function (a) {
-        if (!a || want.indexOf(a) !== -1) return;
-        var li = el('li', 'row acc-row is-other');
-        add(li, thing(a, 'span', 'acc-n'), el('span', 'acc-fx', accessoryText(a)), el('span', 'acc-state', want.length ? 'worn instead' : 'worn'));
-        ul.appendChild(li);
-      });
-      if (!ul.children.length) ul.appendChild(el('li', 'row quiet', 'none'));
-      acc.appendChild(ul);
-      side.appendChild(acc);
-    }
-    body.appendChild(side);
+    // The Equip screen: weapon, armour, footwear and the two accessories.
+    var acc = el('div', 'window acc char-equip');
+    acc.appendChild(pillHead('Equipment', lc ? 'Worn' : null));
+    var ul = el('ul', 'rows');
+    var named = function (kind, name) {
+      var n = el('span', 'acc-n');
+      return add(n, el('b', 'eq-kind', kind), name ? thing(name) : el('span', 'eq-none', 'none'));
+    };
+    var plan = m.gear[id];
+    GEAR_SLOTS.forEach(function (sl) {
+      var e = plan ? plan[sl.key] : null;
+      var name = e ? e.name : (lc ? lc[sl.key] : null);
+      var change = !!e && !!lc && e.how !== 'ok' && e.how !== 'keep';
+      var hold = change && (e.short || e.minor); // not a step right now: cannot be paid for, or hardly worth it
+      var li = el('li', 'row acc-row' + (!lc ? '' : change ? (hold ? ' is-wait' : ' is-missing') : (plan ? ' is-on' : ' is-other')));
+      add(li, named(sl.label, name), el('span', 'acc-fx', gearStats(name)));
+      if (lc) li.appendChild(el('span', 'acc-state', change ? (e.minor ? 'optional' : e.short ? 'not yet' : 'change') : (plan && name ? '✓' : (name ? 'worn' : ''))));
+      if (change) {
+        li.appendChild(el('span', 'acc-how', (e.has ? 'has ' + e.has + ' · ' : '') + gearHow(e)));
+        if (e.gain) li.appendChild(el('span', 'acc-how acc-gain', e.gain));
+      } else if (e && !lc && gearHow(e)) li.appendChild(el('span', 'acc-how', gearHow(e)));
+      if (e && e.option) li.appendChild(el('span', 'acc-how acc-later', 'optional: ' + e.option.name + ' — ' + e.option.text + (e.option.gain ? ' (' + e.option.gain + ')' : '')));
+      if (e && e.later) li.appendChild(el('span', 'acc-how acc-later', 'later: ' + e.later.name + (e.later.where ? ' — ' + e.later.where : '')));
+      ul.appendChild(li);
+    });
+    var want = b ? b.accessories : [];
+    want.forEach(function (a) {
+      var on = lc && lc.accessories.indexOf(a) !== -1;
+      var li = el('li', 'row acc-row' + (lc ? (on ? ' is-on' : ' is-missing') : ''));
+      add(li, named('Accessory', a), el('span', 'acc-fx', accessoryText(a)));
+      if (lc) li.appendChild(el('span', 'acc-state', on ? '✓' : 'not worn'));
+      ul.appendChild(li);
+    });
+    if (lc) lc.accessories.forEach(function (a) {
+      if (!a || want.indexOf(a) !== -1) return;
+      var li = el('li', 'row acc-row is-other');
+      add(li, named('Accessory', a), el('span', 'acc-fx', accessoryText(a)), el('span', 'acc-state', want.length ? 'worn instead' : 'worn'));
+      ul.appendChild(li);
+    });
+    acc.appendChild(ul);
+    add(body, side, acc);
     card.appendChild(body);
 
     if (b && b.notes.length) {
@@ -806,6 +1101,7 @@
       [['Weapon', lc.weapon, cells.weapon], ['Armor', lc.armor, cells.armor], ['Footwear', lc.shoes, cells.shoes]].forEach(function (g) {
         var li = el('li', 'gear' + (g[1] ? '' : ' gear-none'));
         add(li, g[1] ? itemIcon(g[2]) : null, el('b', '', g[0]), document.createTextNode(g[1] || 'none'));
+        if (G.gear && G.gear[g[1]]) tip(li, function () { return tipGear(g[1]); });
         gear.appendChild(li);
       });
       lc.accessories.forEach(function (a) {
@@ -1022,6 +1318,34 @@
       at.appendChild(tr);
     });
     byId('ref-acc-n').textContent = String(anames.length);
+
+    // gear: what the plan names, what it is made from, and what is worn
+    var gw = {};
+    var gnote = function (name, text) { if (gear(name)) { gw[name] = gw[name] || []; if (text) gw[name].push(text); } };
+    Object.keys(m.gear).forEach(function (id) {
+      GEAR_SLOTS.forEach(function (sl) {
+        var e = m.gear[id][sl.key];
+        if (!e) return;
+        gnote(e.name, live ? '' : e.who);
+        if (e.base) gnote(e.base, '');
+        if (e.later) gnote(e.later.name, '');
+      });
+    });
+    people.forEach(function (lc) { GEAR_SLOTS.forEach(function (sl) { gnote(lc[sl.key], lc.name); }); });
+    if (live) (live.bag.gear || []).forEach(function (x) { if (gw[x.name]) gnote(x.name, 'bag' + (x.count > 1 ? ' ×' + x.count : '')); });
+    var gt = byId('ref-gear');
+    gt.textContent = '';
+    var gnames = Object.keys(gw).sort(function (a, b) {
+      return 'waf'.indexOf(gear(a).k) - 'waf'.indexOf(gear(b).k) || (gear(a).who || '').localeCompare(gear(b).who || '') || gearScore(b, 'str') - gearScore(a, 'str');
+    });
+    gnames.forEach(function (n) {
+      var tr = el('tr');
+      add(tr, thing(n, 'th'), el('td', '', GEAR_KIND[gear(n).k]), el('td', '', gearStats(n) || '—'),
+        el('td', gw[n].length ? '' : 'quiet', gw[n].length ? gw[n].join(', ') : (live ? 'not owned yet' : '—')));
+      gt.appendChild(tr);
+    });
+    byId('ref-gear-n').textContent = String(gnames.length);
+    byId('ref-gear-box').hidden = !gnames.length;
   }
 
   // ---- sections ----
@@ -1079,7 +1403,7 @@
       tile('Chapter', live && live.chapter ? live.chapter.title.replace(/:.*$/, '') : CH.title, live && live.chapter ? live.chapter.title.replace(/^[^:]*:\s*/, '') : CH.region),
       tile('Party', art() ? add.apply(null, [el('span', 'tile-faces')].concat(m.active.map(function (id) { return avatar(id, nameOf(id), 'avatar-sm', true); }))) : String(m.active.length),
         m.active.map(nameOf).join(' · ')),
-      live ? tile('To change now', String(m.todo.length), m.todo.length ? 'slots and accessories' : 'everything matches', m.todo.length ? 'tile-warn' : 'tile-ok')
+      live ? tile('To change now', String(m.todo.length), m.todo.length ? 'quartz and equipment' : 'everything matches', m.todo.length ? 'tile-warn' : 'tile-ok')
         : tile('Mode', 'Manual', 'this copy cannot see your save'),
       tile('Still to get', left + ' of ' + m.rows.length, left ? 'upgrades waiting' : 'all upgrades in place', left ? '' : 'tile-ok'));
     host.appendChild(tiles);
@@ -1140,10 +1464,28 @@
       host.appendChild(el('p', 'quiet', 'Tick what you own in the upgrade list below. The diagrams switch each slot to its upgrade as you tick, and show what to slot in the meantime.'));
       return;
     }
+    if (m.gearStale) host.appendChild(el('p', 'helpbar is-warn', 'Weapon, armour and footwear advice needs the newer live server. Close the start-live.cmd window and run it again.'));
+    // upgrades the plan wants but the bag cannot pay for yet, and ones that are hardly worth it
+    var held = function (heading, list) {
+      list = list.filter(function (e) { return m.active.indexOf(e.id) !== -1; });
+      if (!list.length) return;
+      var box = el('div', 'todo-group todo-wait');
+      var ul = el('ul', 'rows rows-later');
+      list.forEach(function (e) {
+        ul.appendChild(swapItem({ pos: e.label, from: e.has || 'empty', to: e.name, where: shortName(e.who) + ' · ' + (e.text || gearHow(e)), note: e.gain }));
+      });
+      add(box, pillHead(heading, String(list.length), 'h3'), ul);
+      host.appendChild(box);
+    };
+    var waiting = function () {
+      held('When you have the materials', m.gearWait);
+      held('Optional: small gain for the cost', m.gearOptional);
+    };
     if (!m.todo.length) {
       host.classList.add('is-done');
       add(host, el('span', 'stamp'), el('p', 'allset big', '✓ Everything matches the build for what you own.'),
-        el('p', 'quiet', 'New steps appear here by themselves when you get a quartz from the list below, or when the party changes.'));
+        el('p', 'quiet', 'New steps appear here by themselves when you get something from the list below, or when the party changes.'));
+      waiting();
       return;
     }
     host.appendChild(el('p', 'quiet', m.todo.length + (m.todo.length === 1 ? ' change' : ' changes') + ' between your save and the build. Updates by itself after the game saves.'));
@@ -1162,6 +1504,11 @@
       grid.appendChild(g);
     });
     host.appendChild(grid);
+    var used = Object.keys(m.matsUsed);
+    if (used.length) {
+      host.appendChild(el('p', 'quiet mats-line', 'The upgrades above use ' + used.map(function (n) { return n + ' ×' + m.matsUsed[n] + ' of your ' + (m.matsHave[n] || 0); }).join(', ') + '.'));
+    }
+    waiting();
   }
 
   function renderGet(m) {
@@ -1169,7 +1516,7 @@
     body.textContent = '';
     byId('get').hidden = !m.rows.length;
     m.rows.forEach(function (r) {
-      var q = quartz(r.name);
+      var q = r.gear ? { fx: gearStats(r.name) } : quartz(r.name);
       var tr = el('tr', r.done ? 'is-found' : '');
       var tdCheck = el('td', 'col-check');
       if (live) {
@@ -1191,12 +1538,13 @@
       tdName.appendChild(thing(r.name, 'strong'));
       if (q.fx) tdName.appendChild(el('span', 'fx', q.fx));
       var tdWhere = el('td', 'col-where', r.src ? r.src.where : '');
-      if (r.src && r.src.tag) tdWhere.appendChild(el('span', 'tag', r.src.tag));
+      if (r.gear) tdWhere.appendChild(el('span', 'tag', r.src && r.src.tag ? r.src.tag : 'chest'));
+      else if (r.src && r.src.tag) tdWhere.appendChild(el('span', 'tag', r.src.tag));
       if (r.src && r.src.also) tdWhere.appendChild(el('span', 'fx', 'also: ' + r.src.also));
       var tdTo = el('td', 'col-to');
       r.wants.forEach(function (w) {
         var line = el('span', 'goes' + (w.got ? ' goes-ok' : ''));
-        add(line, art() ? avatar(w.id, w.who, 'avatar-xs') : null, el('strong', '', (w.got ? '✓ ' : '') + w.who), document.createTextNode(', ' + POS_NAME[w.slot].toLowerCase()));
+        add(line, art() ? avatar(w.id, w.who, 'avatar-xs') : null, el('strong', '', (w.got ? '✓ ' : '') + w.who), document.createTextNode(', ' + (w.label || POS_NAME[w.slot]).toLowerCase()));
         if (w.replaces && !w.got) line.appendChild(el('span', 'fx', 'replaces ' + w.replaces));
         tdTo.appendChild(line);
       });
@@ -1242,6 +1590,7 @@
         host.appendChild(li);
       });
     };
+    var total = function (list) { return list.reduce(function (n, x) { return n + x.count; }, 0); };
     var supplies = live.bag.supplies || [];
     var kind = function (k) { return supplies.filter(function (x) { return x.kind === k; }); };
     var supply = function (name) { return { icon: itemIcon(1), tip: function () { return tipItem(name, G.supplies[name]); } }; };
@@ -1255,7 +1604,16 @@
     rows('bag-accessories', live.bag.accessories, function (name) {
       return { icon: itemIcon((G.accessories[name] || [])[2]), tip: function () { return tipAccessory(name); } };
     });
-    var total = function (list) { return list.reduce(function (n, x) { return n + x.count; }, 0); };
+    var spare = live.bag.gear || [];
+    rows('bag-gear', spare, function (name) {
+      var g = gear(name);
+      return g ? { icon: itemIcon(g.i), tip: function () { return tipGear(name); } } : {};
+    });
+    byId('bag-gear-box').hidden = !spare.length;
+    byId('bag-gear-n').textContent = total(spare) + ' spare';
+    var mats = live.bag.materials || [];
+    rows('bag-materials', mats, function () { return {}; });
+    byId('bag-materials-box').hidden = !mats.length;
     byId('bag-quartz-n').textContent = total(live.bag.quartz) + ' spare';
     byId('bag-accessories-n').textContent = total(live.bag.accessories) + ' spare';
     byId('bag-umat').textContent = String(live.bag.uMaterial);

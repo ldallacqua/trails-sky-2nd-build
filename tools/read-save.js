@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Reads the newest Trails in the Sky 2nd Chapter save and reports the chapter, the party,
 // what each character has slotted and equipped (with HP, EP and CP as of the save), and the
-// spare quartz, accessories, healing items and U-Material in the bag.
+// spare quartz, accessories, gear, healing items and upgrade materials in the bag, plus which
+// tiers of shop stock the story has opened.
 //
 // Read-only: it never writes to the save folder or the game folder.
 // Needs Node 22.15+ (built-in Zstandard). No dependencies.
@@ -33,6 +34,8 @@ const STATS_BACK = 0x22c;    // char id / level / HP / EP block sits this far be
 const CHAPTER_AT = 0x5103c;  // script variable: 0x40000000 | chapter number (0 = prologue)
 const PARTY_AT = 0x51454;    // u16 character ids, 0xffff ends the list; the first four are the active party
 const VAR_TAG = 0x40000000;
+const FLAGS_AT = 0xc;        // story flags, one bit each; flag 16000 + 1000 * n is set when chapter n starts
+const CHAPTER_FLAG = 16000;
 const SLOT_ORDER = ['c', 'll', 'ul', 't', 'ur', 'lr', 'b'];
 const SLOT_NAME = { c: 'Center', ll: 'Lower-left', ul: 'Upper-left', t: 'Top', ur: 'Upper-right', lr: 'Lower-right', b: 'Bottom' };
 const ELEMENTS = ['earth', 'water', 'fire', 'wind', 'time', 'space', 'mirage'];
@@ -42,6 +45,9 @@ const ACCESSORY = [1500, 1700];
 const KIND_AT = 0x28;
 const SUPPLY = { '1/1': 'Recovery', '1/2': 'Support' };
 const FOOD = { '1/3': 1, '1/4': 1, '1/32': 1 };
+const GEAR = { 11: 'weapon', 12: 'armor', 13: 'shoes' };     // item type -> the slot it is worn in
+const MATERIAL = '20/5';     // U-Material and its refined forms
+const PARTS = [2026, 2030];  // Monster Horn, Fang, Shell and Bone: the other half of an upgrade recipe
 
 // ---- game tables -------------------------------------------------------------
 function readFromPac(pacFile, wantedName) {
@@ -116,6 +122,7 @@ function loadItemNames(kinds, icons) {
 //   people    character id -> { id, name } for everyone who has an orbment
 //   layouts   character id -> { lines: [[slot keys from the center outwards]], locks: { slot: element } }
 //   chapters  chapter number -> title
+//   gates     the story flags that open or close a tier of shop stock
 function loadGame() {
   const kinds = new Map(), icons = new Map();
   const items = loadItemNames(kinds, icons);
@@ -156,7 +163,31 @@ function loadGame() {
     const n = ch.b.readUInt16LE(e);
     if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
   }
-  return { items, kinds, icons, people, layouts, chapters };
+  return { items, kinds, icons, people, layouts, chapters, gates: loadShop().gates };
+}
+
+// The shop table. Every town sells from the same lists. A row is on sale once one of its "from"
+// flags is set, and until one of its "until" flags is.
+//   stock    [{ list, item, from: [flag], until: [flag] }]
+//            list 1002 = upgrades, 1006 = weapons, 1007 = armour and footwear
+//   recipes  result item id -> { base, count, mats: [[item id, count]] }
+//   gates    every story flag a row depends on
+function loadShop() {
+  const t = loadTable('t_shop.tbl');
+  const flags = (at, n) => Array.from({ length: n }, (_, k) => t.b.readUInt16LE(at + k * 2));
+  const stock = t.rows('ShopItem').map((e) => ({
+    list: t.b.readUInt16LE(e), item: t.b.readUInt16LE(e + 2),
+    from: flags(t.b.readUInt32LE(e + 8), t.b.readUInt32LE(e + 16)), until: flags(t.b.readUInt32LE(e + 24), t.b.readUInt32LE(e + 32))
+  })).filter((r) => r.list >= 1000);
+  const recipes = new Map();
+  for (const e of t.rows('TradeItem')) {
+    const mats = [];
+    for (let o = 12; o < 52; o += 8) if (t.b.readUInt32LE(e + o)) mats.push([t.b.readUInt32LE(e + o), t.b.readUInt32LE(e + o + 4)]);
+    recipes.set(t.b.readUInt32LE(e), { base: t.b.readUInt32LE(e + 4), count: t.b.readUInt32LE(e + 8), mats });
+  }
+  const gates = new Set();
+  for (const r of stock) r.from.concat(r.until).forEach((f) => { if (f >= CHAPTER_FLAG) gates.add(f); });
+  return { stock, recipes, gates: [...gates].sort((a, b) => a - b) };
 }
 
 // ---- save --------------------------------------------------------------------
@@ -240,20 +271,32 @@ function readSaveFile(file, game) {
     chapter = { n, title: game.chapters.get(n) };
   }
 
-  const bag = { quartz: [], accessories: [], supplies: [], food: { kinds: 0, total: 0 }, uMaterial: 0 };
+  const bag = { quartz: [], accessories: [], gear: [], materials: [], supplies: [], food: { kinds: 0, total: 0 }, uMaterial: 0 };
   for (const [id, name] of game.items) {
     const count = b.readUInt16LE(INV_BASE + id * 4);
     if (!count) continue;
+    const kind = (game.kinds && game.kinds.get(id)) || '';
     if (id >= QUARTZ[0] && id < QUARTZ[1]) bag.quartz.push({ name, count });
     else if (id >= ACCESSORY[0] && id < ACCESSORY[1]) bag.accessories.push({ name, count });
-    else if (name === 'U-Material') bag.uMaterial = count;
-    else if (game.kinds && SUPPLY[game.kinds.get(id)]) bag.supplies.push({ name, count, kind: SUPPLY[game.kinds.get(id)] });
-    else if (game.kinds && FOOD[game.kinds.get(id)]) { bag.food.kinds++; bag.food.total += count; }
+    else if (GEAR[parseInt(kind, 10)]) bag.gear.push({ name, count, slot: GEAR[parseInt(kind, 10)] });
+    else if (kind === MATERIAL || (id >= PARTS[0] && id < PARTS[1])) {
+      bag.materials.push({ name, count });
+      if (name === 'U-Material') bag.uMaterial = count;
+    } else if (SUPPLY[kind]) bag.supplies.push({ name, count, kind: SUPPLY[kind] });
+    else if (FOOD[kind]) { bag.food.kinds++; bag.food.total += count; }
   }
-  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag };
+
+  // Which tiers of shop stock are open: the gate flags that are set. Only trusted when the
+  // flags agree with the chapter; otherwise left out, and the page goes by the chapter alone.
+  let story = null;
+  const flag = (f) => !!(b[FLAGS_AT + (f >> 3)] & (1 << (f & 7)));
+  if (chapter && game.gates && flag(CHAPTER_FLAG + chapter.n * 1000) && !flag(CHAPTER_FLAG + (chapter.n + 1) * 1000)) {
+    story = game.gates.filter(flag);
+  }
+  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag, story };
 }
 
-module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, loadTable, loadItemNames, loadGame, newestSave, readSaveFile };
+module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, loadTable, loadItemNames, loadGame, loadShop, newestSave, readSaveFile };
 
 // ---- command line ------------------------------------------------------------
 function main() {
@@ -283,8 +326,10 @@ function main() {
   console.log('Spare quartz in the bag:\n  ' + list(data.bag.quartz) + '\n');
   console.log('Spare accessories in the bag:\n  ' + list(data.bag.accessories) + '\n');
   console.log('Healing and support items:\n  ' + list(data.bag.supplies) + '\n');
+  console.log('Spare weapons, armour and footwear in the bag:\n  ' + list(data.bag.gear) + '\n');
+  console.log('Upgrade materials:\n  ' + list(data.bag.materials) + '\n');
   console.log('Food: ' + data.bag.food.total + ' across ' + data.bag.food.kinds + ' kinds');
-  console.log('U-Material: ' + data.bag.uMaterial);
+  console.log('Shop stock: ' + (data.story ? data.story.length + ' tier changes reached' : 'story flags not recognised, going by the chapter'));
 }
 
 if (require.main === module) {
