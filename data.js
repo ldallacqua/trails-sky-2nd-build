@@ -97,7 +97,7 @@ window.BUILD = {
       notes: [
         'Shield 4 is a free upgrade over Evade 3: same Wind-locked slot, more Wind, so no Art is lost.',
         'Evade 3 was only there because that slot is Wind-locked.',
-        'Her lower-left slot is empty in the save: her Cast 3 went to Kloe. Synthesize another; none is spare in the bag.',
+        'Her lower-left slot is empty in the save: her Cast 3 went to Kloe. There is a new Cast 3 in the bag to put there.',
         'Accessories are what she wears now, and both add SPD +15. Victory Headband (on Tita) is the swap if you want faster CP for Heaven\u2019s Kiss.'
       ]
     },
