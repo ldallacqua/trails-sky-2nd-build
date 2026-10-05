@@ -6,10 +6,15 @@
   <title>Sky 2nd Chapter — Living Build</title>
   <meta name="description" content="Party build notes for a Trails in the Sky 2nd Chapter (remake) playthrough. Shows one chapter at a time.">
   <meta name="robots" content="noindex">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#3a2817">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;1,500;1,600&family=Tinos:wght@700&family=Zen+Maru+Gothic:wght@500;700;900&display=swap">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Drawn stand-ins for the game's menu icons, used when the game's own art is not available. -->
   <svg class="defs" width="0" height="0" aria-hidden="true" focusable="false">
     <defs>
       <linearGradient id="g-bezel" x1="0" y1="0" x2="1" y2="1">
@@ -18,29 +23,33 @@
       <radialGradient id="g-face" cx="0.5" cy="0.42" r="0.62">
         <stop offset="0" class="g-face-a"/><stop offset="1" class="g-face-b"/>
       </radialGradient>
+      <symbol id="i-sword" viewBox="0 0 24 24"><path d="M20.6 2.2l1.2 1.2-.6 3.4-9.6 9.6-2.6-2.6 9.6-9.6zM8 14.8l2.6 2.6-1.3 1.3.9.9-1.5 1.5-.9-.9-2.3 2.3-2.6-2.6 2.3-2.3-.9-.9 1.5-1.5.9.9z"/></symbol>
+      <symbol id="i-jacket" viewBox="0 0 24 24"><path d="M12 1.8l8.2 3v6.4c0 5-3.3 9-8.2 11-4.9-2-8.2-6-8.2-11V4.8zm0 2.6L6.2 6.5v4.7c0 3.7 2.3 6.8 5.8 8.4z"/></symbol>
+      <symbol id="i-orbment" viewBox="0 0 24 24"><path d="M12 1.5a10.5 10.5 0 100 21 10.5 10.5 0 000-21zm0 2.4a8.1 8.1 0 110 16.200A8.1 8.1 0 0112 3.900z" fill-rule="evenodd"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="7.2" r="1.5"/><circle cx="16.2" cy="9.6" r="1.5"/><circle cx="16.2" cy="14.4" r="1.5"/><circle cx="12" cy="16.8" r="1.5"/><circle cx="7.8" cy="14.4" r="1.5"/><circle cx="7.8" cy="9.6" r="1.5"/></symbol>
+      <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M21.6 6.300a5.600 5.600 0 01-7.300 6.400l-7.800 8.200a2.300 2.300 0 01-3.300-3.300l8.200-7.800a5.600 5.600 0 016.400-7.300l-3.300 3.300.7 3 3 .7z"/></symbol>
+      <symbol id="i-bottle" viewBox="0 0 24 24"><path d="M9.300 1.800h5.400v2.400h-1v3.300l4 5.300v7a2.400 2.400 0 01-2.400 2.400H8.700a2.400 2.400 0 01-2.400-2.400v-7l4-5.300V4.200h-1zM8.500 13.400v6.400h7v-6.400z" fill-rule="evenodd"/></symbol>
+      <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="6.500" r="3.700"/><path d="M2.500 21.500v-4.600c0-3 2.700-5 6.500-5s6.500 2 6.500 5v4.600z"/><circle cx="18" cy="9.800" r="2.600"/><path d="M16.500 13.600c.5-.2 1-.2 1.500-.2 2.300 0 4 1.300 4 3.300v4.800h-4.800v-4.600c0-1.200-.2-2.300-.7-3.300z"/></symbol>
+      <symbol id="i-rosette" viewBox="0 0 24 24"><path d="M12 1.500a7.300 7.300 0 100 14.600 7.300 7.300 0 000-14.600zm3.900 4.800l1.300 1.300-6 6-3.300-3.300 1.300-1.300 2 2z" fill-rule="evenodd"/><path d="M7.200 15.600l-2.700 6.200 3.200-.9 1.700 2.600 2.100-6.200a8.800 8.800 0 01-4.300-1.700zm9.600 0a8.800 8.800 0 01-4.300 1.700l2.100 6.200 1.700-2.600 3.200.9z"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 4.200c3-.9 6-.6 8.200 1v15.300c-2.300-1.500-5.200-1.800-8.200-.9zm18 0v15.400c-3-.9-5.900-.6-8.200.9V5.200c2.300-1.600 5.200-1.900 8.200-1z"/></symbol>
     </defs>
   </svg>
 
+  <div class="backdrop" aria-hidden="true">
+    <span class="cog cog-1"></span><span class="cog cog-2"></span><span class="cog cog-3"></span><span class="cog cog-4"></span>
+  </div>
+
   <header class="mast">
     <div class="wrap mast-row">
-      <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
-          <circle cx="24" cy="24" r="22" class="bm-ring"/>
-          <polyline points="24,24 9,31.5 9,16.5 24,8" class="bm-rail bm-a"/>
-          <polyline points="24,24 39,16.5 39,31.5 24,40" class="bm-rail bm-b"/>
-          <circle cx="24" cy="8" r="3.4" class="bm-orb"/><circle cx="9" cy="16.5" r="3.4" class="bm-orb"/>
-          <circle cx="39" cy="16.5" r="3.4" class="bm-orb"/><circle cx="9" cy="31.5" r="3.4" class="bm-orb"/>
-          <circle cx="39" cy="31.5" r="3.4" class="bm-orb"/><circle cx="24" cy="40" r="3.4" class="bm-orb"/>
-          <circle cx="24" cy="24" r="5" class="bm-core"/>
-        </svg>
-        <div>
-          <p class="eyebrow">Trails in the Sky 2nd Chapter · Remake</p>
-          <h1>Living Build</h1>
+      <div class="banner banner-title">
+        <span class="medal medal-xl"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-orbment"/></svg><i class="mi" style="--i:2"></i></span>
+        <div class="banner-bar">
+          <p class="eyebrow">Trails in the Sky 2nd Chapter</p>
+          <h1 class="gold"><span class="t-sm">Living-</span>Build</h1>
         </div>
       </div>
       <div class="mast-meta">
-        <span id="chapter-chip" class="mchip mchip-chapter" hidden></span>
-        <span id="live-chip" class="mchip mchip-live" hidden><span class="pulse" aria-hidden="true"></span><span id="live-text"></span></span>
+        <span id="chapter-chip" class="plate" hidden></span>
+        <span id="live-chip" class="lamp" hidden><span class="pulse" aria-hidden="true"></span><span id="live-text"></span></span>
       </div>
     </div>
   </header>
@@ -50,224 +59,272 @@
   </nav>
 
   <main class="wrap" id="app">
-    <p id="notice" class="card notice" hidden></p>
+    <p id="notice" class="panel notice" hidden></p>
 
     <div id="overview"></div>
 
-    <section class="card" id="now" aria-labelledby="now-h">
-      <h2 id="now-h">Next steps</h2>
-      <div id="now-body"></div>
+    <section class="screen" id="now" aria-labelledby="now-h">
+      <header class="banner">
+        <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-sword"/></svg><i class="mi" style="--i:0"></i></span>
+        <div class="banner-bar">
+          <h2 id="now-h" class="gold"><span class="t-sm">Next-</span>Steps</h2>
+          <span class="banner-note" id="now-count"></span>
+        </div>
+      </header>
+      <div class="panel" id="now-body"></div>
     </section>
 
-    <section class="card" id="get" aria-labelledby="get-h">
-      <div class="card-head">
-        <h2 id="get-h">Upgrade list</h2>
-        <span class="count" id="get-count"></span>
-      </div>
-      <p class="quiet" id="get-hint"></p>
-      <div class="table-scroll">
-        <table class="find-table">
-          <thead>
-            <tr><th class="col-check">Have</th><th>Quartz</th><th>Where</th><th>Goes to</th></tr>
-          </thead>
-          <tbody id="get-rows"></tbody>
-        </table>
+    <section class="screen" id="get" aria-labelledby="get-h">
+      <header class="banner">
+        <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-rosette"/></svg><i class="mi" style="--i:7"></i></span>
+        <div class="banner-bar">
+          <h2 id="get-h" class="gold"><span class="t-sm">Upgrade-</span>List</h2>
+          <span class="banner-note" id="get-count"></span>
+        </div>
+      </header>
+      <div class="panel">
+        <p class="quiet" id="get-hint"></p>
+        <div class="table-scroll">
+          <table class="list find-table">
+            <thead>
+              <tr><th class="col-check">Have</th><th>Quartz</th><th>Where</th><th>Goes to</th></tr>
+            </thead>
+            <tbody id="get-rows"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
-    <section class="card" id="status" aria-labelledby="status-h" hidden>
-      <div class="card-head">
-        <h2 id="status-h">Party status</h2>
-        <span class="count" id="status-when"></span>
-      </div>
-      <div id="status-body" class="st-rows"></div>
-      <p id="status-note" class="quiet"></p>
+    <section class="screen" id="status" aria-labelledby="status-h" hidden>
+      <header class="banner">
+        <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-people"/></svg><i class="mi" style="--i:5"></i></span>
+        <div class="banner-bar">
+          <h2 id="status-h" class="gold"><span class="t-sm">Party-</span>Status</h2>
+          <span class="banner-note" id="status-when"></span>
+        </div>
+      </header>
+      <div id="status-body" class="st-grid"></div>
+      <p id="status-note" class="helpbar"></p>
     </section>
 
     <section aria-labelledby="chars-h" id="orbments">
-      <div class="section-head">
-        <h2 id="chars-h" class="section-title">Orbments</h2>
-        <ul class="legend">
-          <li><span class="orb orb-sm el-wind legend-ok"><span class="check">✓</span></span> already slotted</li>
-          <li><span class="orb orb-sm lock lock-wind el-wind"></span> ring = locked slot</li>
-          <li><span class="mark mark-change">name</span> swap now</li>
-          <li><span class="orb orb-sm is-pending-demo"></span> upgrade pending</li>
-          <li><span class="rail-demo"></span> lines run from the center outwards</li>
-        </ul>
-      </div>
+      <div class="divider"><h2 id="chars-h">Orbments</h2></div>
+      <ul class="helpbar legend">
+        <li><span class="orb orb-sm el-wind legend-ok"><span class="check">✓</span></span> already slotted</li>
+        <li><span class="orb orb-sm lock lock-wind el-wind"></span> ring = locked slot</li>
+        <li><span class="mark-change">name</span> swap now</li>
+        <li><span class="orb orb-sm is-pending-demo"></span> upgrade pending</li>
+        <li><span class="rail-demo"></span> lines run from the center outwards</li>
+        <li class="legend-tip">hover or tap a quartz to see what it does</li>
+      </ul>
 
       <div id="party"></div>
       <div id="reserve"></div>
     </section>
 
     <section aria-labelledby="cov-h" id="coverage">
-      <div class="section-head">
-        <h2 id="cov-h" class="section-title">Coverage</h2>
-        <p class="section-sub">What the party can do between them, and what it is protected against.</p>
+      <div class="divider"><h2 id="cov-h">Coverage</h2></div>
+      <p class="divider-sub">What the party can do between them, and what it is protected against.</p>
+
+      <div class="screen" id="arts">
+        <header class="banner">
+          <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-orbment"/></svg><i class="mi" style="--i:2"></i></span>
+          <div class="banner-bar"><h3 class="gold"><span class="t-sm">Party-</span>Arts</h3></div>
+        </header>
+        <div class="panel">
+          <p class="quiet" id="arts-hint"></p>
+          <div id="arts-body"></div>
+        </div>
       </div>
-      <div class="card" id="arts">
-        <h3 class="card-title">Party Arts</h3>
-        <p class="quiet" id="arts-hint"></p>
-        <div id="arts-body"></div>
-      </div>
-      <div class="card" id="guard">
-        <h3 class="card-title">Status protection</h3>
-        <p class="quiet" id="guard-hint"></p>
-        <div id="guard-body"></div>
-        <p class="quiet">100% is immunity. Anything less is a chance to resist.</p>
+
+      <div class="screen" id="guard">
+        <header class="banner">
+          <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-jacket"/></svg><i class="mi" style="--i:1"></i></span>
+          <div class="banner-bar"><h3 class="gold"><span class="t-sm">Status-</span>Protection</h3></div>
+        </header>
+        <div class="panel">
+          <p class="quiet" id="guard-hint"></p>
+          <div id="guard-body"></div>
+          <p class="quiet">100% is immunity. Anything less is a chance to resist.</p>
+        </div>
       </div>
     </section>
 
-    <section class="card" id="bag" aria-labelledby="bag-h" hidden>
-      <div class="card-head">
-        <h2 id="bag-h">Your bag</h2>
-        <span class="count">read from your save</span>
+    <section class="screen" id="bag" aria-labelledby="bag-h" hidden>
+      <header class="banner">
+        <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-bottle"/></svg><i class="mi" style="--i:4"></i></span>
+        <div class="banner-bar">
+          <h2 id="bag-h" class="gold"><span class="t-sm">Item-</span>Bag</h2>
+          <span class="banner-note">read from your save</span>
+        </div>
+      </header>
+      <div class="panel">
+        <div class="bag-facts">
+          <div class="fact"><span class="fact-label">U-Material</span><strong id="bag-umat"></strong></div>
+          <div class="fact"><span class="fact-label">Food</span><strong id="bag-food"></strong></div>
+          <div class="fact"><span class="fact-label">Spare quartz</span><strong id="bag-quartz-n"></strong></div>
+          <div class="fact"><span class="fact-label">Spare accessories</span><strong id="bag-accessories-n"></strong></div>
+        </div>
+        <div class="bag-cols" id="bag-supplies">
+          <div>
+            <h3 class="pill-head"><span>Recovery items</span><span>Held</span></h3>
+            <ul class="rows" id="bag-recovery"></ul>
+          </div>
+          <div>
+            <h3 class="pill-head"><span>Status cures and support</span><span>Held</span></h3>
+            <ul class="rows" id="bag-support"></ul>
+          </div>
+        </div>
+        <details>
+          <summary>Spare quartz</summary>
+          <ul class="rows rows-cols" id="bag-quartz"></ul>
+        </details>
+        <details>
+          <summary>Spare accessories</summary>
+          <ul class="rows rows-cols" id="bag-accessories"></ul>
+        </details>
+        <p class="quiet">Hover or tap an item to see what it does.</p>
       </div>
-      <div class="bag-facts">
-        <div class="fact"><span class="fact-label">U-Material</span><strong id="bag-umat"></strong></div>
-        <div class="fact"><span class="fact-label">Food</span><strong id="bag-food"></strong></div>
-        <div class="fact"><span class="fact-label">Spare quartz</span><strong id="bag-quartz-n"></strong></div>
-        <div class="fact"><span class="fact-label">Spare accessories</span><strong id="bag-accessories-n"></strong></div>
-      </div>
-      <div id="bag-supplies">
-        <h3 class="block-h">Recovery items</h3>
-        <p class="chips" id="bag-recovery"></p>
-        <h3 class="block-h">Status cures and support</h3>
-        <p class="chips" id="bag-support"></p>
-      </div>
-      <details>
-        <summary>Spare quartz</summary>
-        <p class="chips" id="bag-quartz"></p>
-      </details>
-      <details>
-        <summary>Spare accessories</summary>
-        <p class="chips" id="bag-accessories"></p>
-      </details>
-      <p class="quiet">Hover or long-press a chip to see what it does.</p>
     </section>
 
     <div id="sections"></div>
 
     <section aria-labelledby="ref-h" id="reference">
-      <div class="section-head">
-        <h2 id="ref-h" class="section-title">Reference</h2>
-        <p class="section-sub">Look-up tables, read from the game’s own data.</p>
-      </div>
-      <div class="card" id="lookup">
-        <h3 class="card-title">Look-up</h3>
-        <details>
-          <summary>Quartz on this page <span class="tag" id="ref-quartz-n"></span></summary>
-          <div class="table-scroll">
-            <table class="plain ref-table">
-              <thead><tr><th>Quartz</th><th>Elemental value</th><th>Effect</th><th>Where it is</th></tr></thead>
-              <tbody id="ref-quartz"></tbody>
-            </table>
-          </div>
-        </details>
-        <details>
-          <summary>Accessories you have or need <span class="tag" id="ref-acc-n"></span></summary>
-          <div class="table-scroll">
-            <table class="plain ref-table">
-              <thead><tr><th>Accessory</th><th>Stats</th><th>Resists</th><th>Where it is</th></tr></thead>
-              <tbody id="ref-acc"></tbody>
-            </table>
-          </div>
-        </details>
-        <details>
-          <summary>How orbments work</summary>
-          <ul class="notes">
-            <li><strong>Lines.</strong> Every slot sits on a line that starts at the center. The center slot counts for every line.</li>
-            <li><strong>Elemental values.</strong> Each quartz adds points to one or more of the seven elements. The game adds them up per line; that is the Value box in the orbment menu.</li>
-            <li><strong>Arts.</strong> An Art unlocks when a single line reaches its requirement. Points on different lines do not combine, which is why a character with one long line casts far more than one with four short lines.</li>
-            <li><strong>Locked slots.</strong> A slot with a coloured arc above it only takes quartz of that element. White slots take anything.</li>
-            <li><strong>One of a kind.</strong> Two quartz of the same family, such as Action 3 and Action 4, cannot sit on one orbment.</li>
-            <li><strong>Ranks.</strong> A higher rank of a quartz usually adds one elemental point and a little more of its effect. The extra point is often what unlocks the next Art.</li>
-            <li><strong>Resistances.</strong> 100% is immunity. Lower numbers are a chance, and the best single source counts on this page.</li>
-          </ul>
-        </details>
+      <div class="divider"><h2 id="ref-h">Reference</h2></div>
+      <p class="divider-sub">Look-up tables, read from the game’s own data.</p>
+
+      <div class="screen" id="lookup">
+        <header class="banner">
+          <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-book"/></svg><i class="mi" style="--i:6"></i></span>
+          <div class="banner-bar"><h3 class="gold"><span class="t-sm">Reference-</span>Look-up</h3></div>
+        </header>
+        <div class="panel">
+          <details>
+            <summary>Quartz on this page <span class="tag" id="ref-quartz-n"></span></summary>
+            <div class="table-scroll">
+              <table class="list ref-table">
+                <thead><tr><th>Quartz</th><th>Elemental value</th><th>Effect</th><th>Where it is</th></tr></thead>
+                <tbody id="ref-quartz"></tbody>
+              </table>
+            </div>
+          </details>
+          <details>
+            <summary>Accessories you have or need <span class="tag" id="ref-acc-n"></span></summary>
+            <div class="table-scroll">
+              <table class="list ref-table">
+                <thead><tr><th>Accessory</th><th>Stats</th><th>Resists</th><th>Where it is</th></tr></thead>
+                <tbody id="ref-acc"></tbody>
+              </table>
+            </div>
+          </details>
+          <details>
+            <summary>How orbments work</summary>
+            <ul class="notes">
+              <li><strong>Lines.</strong> Every slot sits on a line that starts at the center. The center slot counts for every line.</li>
+              <li><strong>Elemental values.</strong> Each quartz adds points to one or more of the seven elements. The game adds them up per line; that is the Value box in the orbment menu.</li>
+              <li><strong>Arts.</strong> An Art unlocks when a single line reaches its requirement. Points on different lines do not combine, which is why a character with one long line casts far more than one with four short lines.</li>
+              <li><strong>Locked slots.</strong> A slot with a coloured arc above it only takes quartz of that element. White slots take anything.</li>
+              <li><strong>One of a kind.</strong> Two quartz of the same family, such as Action 3 and Action 4, cannot sit on one orbment.</li>
+              <li><strong>Ranks.</strong> A higher rank of a quartz usually adds one elemental point and a little more of its effect. The extra point is often what unlocks the next Art.</li>
+              <li><strong>Resistances.</strong> 100% is immunity. Lower numbers are a chance, and the best single source counts on this page.</li>
+            </ul>
+          </details>
+        </div>
       </div>
 
-      <div class="card" id="about">
-      <h3 class="card-title" id="about-h">About this page</h3>
-      <p class="quiet">It shows one chapter at a time. Notes for later chapters are already written, but they stay sealed until your save reaches that chapter.</p>
-      <details>
-        <summary>What is verified, and how</summary>
-        <div class="table-scroll">
-          <table class="plain">
-            <thead><tr><th>Claim</th><th>Checked against</th></tr></thead>
-            <tbody>
-              <tr><th>Chapter, party, what you own and have slotted</th><td>Read directly from the save file</td></tr>
-              <tr><th>Line paths and slot locks</th><td>The game's own orbment table, generated per character. The four in-game screenshots match it.</td></tr>
-              <tr><th>Quartz colours and elemental values</th><td>The game's own quartz table</td></tr>
-              <tr><th>Which Arts a layout gives</th><td>Computed from the game's own Arts table</td></tr>
-              <tr><th>Art EP costs and descriptions</th><td>The game's own skill table</td></tr>
-              <tr><th>Accessory stats and resistances</th><td>The game's own item table</td></tr>
-              <tr><th>Quartz effects</th><td>The game's own item table, worded with the game's help text. Effects whose numbers could not be checked against in-game text are left out.</td></tr>
-              <tr><th>HP, EP, CP, gear and bag</th><td>Read directly from the save file, as of the last save</td></tr>
-              <tr><th>Portraits and icons</th><td>The game's own textures, extracted from your install. Gear icons are the ones the item table names. All quartz use the plain orb of their element; the game's sparkle variants are not used because the table does not say which quartz get them.</td></tr>
-              <tr><th>English names</th><td>The game's own English tables</td></tr>
-              <tr><th>Quartz locations</th><td>Kago chest lists and Kamigame's quartz list agree</td></tr>
-              <tr><th>Party rules and boss mechanics</th><td>Kamigame and Silver Intention walkthroughs</td></tr>
-            </tbody>
-          </table>
+      <div class="screen" id="about">
+        <header class="banner">
+          <span class="medal"><svg class="mi-svg" viewBox="0 0 24 24"><use href="#i-wrench"/></svg><i class="mi" style="--i:3"></i></span>
+          <div class="banner-bar"><h3 class="gold" id="about-h"><span class="t-sm">System-</span>About</h3></div>
+        </header>
+        <div class="panel">
+        <p class="quiet">It shows one chapter at a time. Notes for later chapters are already written, but they stay sealed until your save reaches that chapter.</p>
+        <details>
+          <summary>What is verified, and how</summary>
+          <div class="table-scroll">
+            <table class="list plain">
+              <thead><tr><th>Claim</th><th>Checked against</th></tr></thead>
+              <tbody>
+                <tr><th>Chapter, party, what you own and have slotted</th><td>Read directly from the save file</td></tr>
+                <tr><th>Line paths and slot locks</th><td>The game's own orbment table, generated per character. The four in-game screenshots match it.</td></tr>
+                <tr><th>Quartz colours and elemental values</th><td>The game's own quartz table</td></tr>
+                <tr><th>Which Arts a layout gives</th><td>Computed from the game's own Arts table</td></tr>
+                <tr><th>Art EP costs and descriptions</th><td>The game's own skill table</td></tr>
+                <tr><th>Accessory stats and resistances</th><td>The game's own item table</td></tr>
+                <tr><th>Quartz effects</th><td>The game's own item table, worded with the game's help text. Effects whose numbers could not be checked against in-game text are left out.</td></tr>
+                <tr><th>HP, EP, CP, gear and bag</th><td>Read directly from the save file, as of the last save</td></tr>
+                <tr><th>Portraits, icons and menu art</th><td>The game's own textures, extracted from your install. Gear icons are the ones the item table names. All quartz use the plain orb of their element; the game's sparkle variants are not used because the table does not say which quartz get them. Status icons are matched to their names with the Combat Notebook screenshot on the official 1st Chapter site.</td></tr>
+                <tr><th>The look of this page</th><td>Modelled on the game's camp, orbment and Bracer Notebook screens, from its own textures and the official 1st Chapter screenshots</td></tr>
+                <tr><th>English names</th><td>The game's own English tables</td></tr>
+                <tr><th>Quartz locations</th><td>Kago chest lists and Kamigame's quartz list agree</td></tr>
+                <tr><th>Party rules and boss mechanics</th><td>Kamigame and Silver Intention walkthroughs</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Known source errors, so they are not reintroduced:</p>
+          <ul class="notes">
+            <li>Silver Intention's Arts table lists Time for the Tear line. The game uses Mirage.</li>
+            <li>Kago lists Jade Guard as Wind 2 and Topaz Guard as Earth 2. The game has Wind 3 and Earth 3.</li>
+            <li>Earlier versions listed “Divine Cross” and “Black Bangle X”. The English names are Divine Cloth and Black Bangle+.</li>
+            <li>Earlier versions said “Elize Turnpike”. The game calls it Elize Highway.</li>
+            <li>Earlier versions gave Breeze an item range of +30m. The game's table has +10m.</li>
+            <li>The guide's accessory list leaves out SPD +5 on Force Seal+ and Victory Headband. The game's table has it.</li>
+          </ul>
+          <p>Not verified: whether specific bosses resist specific debuffs, and what “All status ailments” covers exactly.</p>
+        </details>
+        <details>
+          <summary>Sources <span class="tag tag-warn">these sites spoil later chapters</span></summary>
+          <p class="quiet">Japanese guide sites. Their menus, sidebars and full lists cover the whole game, so opening them risks spoilers.</p>
+          <ul class="notes">
+            <li><a rel="noopener" href="https://kamigame.jp/soranokiseki2nd/index.html">Kamigame</a> — walkthroughs, quartz and accessory lists</li>
+            <li><a rel="noopener" href="https://kago.jara-blog.com/sora2nd_quartz">Kago</a> — chest lists, quartz and Arts tables</li>
+            <li><a rel="noopener" href="https://silver-intention.com/sora_2nd/">Silver Intention</a> — walkthroughs and per-chapter builds</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Change log</summary>
+          <h3>v21 — 2026-10-05</h3>
+          <ul class="notes">
+            <li>New look, modelled on the game's own menus: parchment and gears, title banners, cream list windows, navy status cards, and Bracer Notebook pages for the notes.</li>
+            <li>Hover, focus or tap a quartz, accessory, Art or item and a help window says what it is, what it does and where yours are.</li>
+            <li>Live mode uses more of the game's art: menu furniture, the Bracer emblem, standing art in the party status, cut-ins on the character banners and status icons.</li>
+          </ul>
+          <h3>v20 — 2026-10-05</h3>
+          <ul class="notes">
+            <li>Live mode now uses the game's own art, read from your install: character portraits, quartz and item icons, element icons and the orbment face. It stays on this PC; the published copy keeps the drawn look.</li>
+          </ul>
+          <h3>v19 — 2026-10-05</h3>
+          <ul class="notes">
+            <li>The orbment is a round dial again, with the slots on a regular hexagon as in game.</li>
+            <li>New: party status (HP, EP, CP and gear as of the last save), party Arts, status protection, healing items in the bag, and look-up tables for quartz and accessories.</li>
+            <li>Accessory stats, quartz effects and Art costs now come from the game's own tables instead of guides.</li>
+            <li>Spacing and navigation tidied; the nav marks the section you are reading.</li>
+          </ul>
+          <h3>v18 — 2026-10-05</h3>
+          <ul class="notes">
+            <li>Chapters. Notes for every remaining chapter are written and sealed; the live page opens each one when your save reaches it, and the published page asks before opening the next.</li>
+            <li>The party is read from the save. Cards follow who is actually in your party, with reserve builds kept below.</li>
+            <li>Orbment lines now follow the real path from the center outwards, taken from the game's own table.</li>
+            <li>Arts for each layout are computed from the game's Arts table.</li>
+            <li>The upgrade list counts copies, so it works once rank 4 quartz can be synthesized.</li>
+            <li>New design.</li>
+          </ul>
+          <h3>v17 — 2026-10-05</h3>
+          <ul class="notes">
+            <li>Live mode: run the local server and the page follows your save by itself.</li>
+          </ul>
+          <h3>v16 — 2026-10-05</h3>
+          <ul class="notes">
+            <li>Synced to the actual save file. Slot locks and quartz values checked against the game's own data.</li>
+            <li>Accessories corrected to what you own. Boss prep uses accessories already in your bag.</li>
+          </ul>
+          <h3>v15 and earlier</h3>
+          <ul class="notes">
+            <li>Moved from a Markdown file to this page; slot locks read from screenshots; Bastion moved from Kloe to Zin; Action 4 moved from Estelle to Schera.</li>
+          </ul>
+        </details>
+        <p class="quiet foot-meta"><span id="meta-version"></span></p>
         </div>
-        <p>Known source errors, so they are not reintroduced:</p>
-        <ul class="notes">
-          <li>Silver Intention's Arts table lists Time for the Tear line. The game uses Mirage.</li>
-          <li>Kago lists Jade Guard as Wind 2 and Topaz Guard as Earth 2. The game has Wind 3 and Earth 3.</li>
-          <li>Earlier versions listed “Divine Cross” and “Black Bangle X”. The English names are Divine Cloth and Black Bangle+.</li>
-          <li>Earlier versions said “Elize Turnpike”. The game calls it Elize Highway.</li>
-          <li>Earlier versions gave Breeze an item range of +30m. The game's table has +10m.</li>
-          <li>The guide's accessory list leaves out SPD +5 on Force Seal+ and Victory Headband. The game's table has it.</li>
-        </ul>
-        <p>Not verified: whether specific bosses resist specific debuffs, and what “All status ailments” covers exactly.</p>
-      </details>
-      <details>
-        <summary>Sources <span class="tag tag-warn">these sites spoil later chapters</span></summary>
-        <p class="quiet">Japanese guide sites. Their menus, sidebars and full lists cover the whole game, so opening them risks spoilers.</p>
-        <ul class="notes">
-          <li><a rel="noopener" href="https://kamigame.jp/soranokiseki2nd/index.html">Kamigame</a> — walkthroughs, quartz and accessory lists</li>
-          <li><a rel="noopener" href="https://kago.jara-blog.com/sora2nd_quartz">Kago</a> — chest lists, quartz and Arts tables</li>
-          <li><a rel="noopener" href="https://silver-intention.com/sora_2nd/">Silver Intention</a> — walkthroughs and per-chapter builds</li>
-        </ul>
-      </details>
-      <details>
-        <summary>Change log</summary>
-        <h3>v20 — 2026-10-05</h3>
-        <ul class="notes">
-          <li>Live mode now uses the game's own art, read from your install: character portraits, quartz and item icons, element icons and the orbment face. It stays on this PC; the published copy keeps the drawn look.</li>
-        </ul>
-        <h3>v19 — 2026-10-05</h3>
-        <ul class="notes">
-          <li>The orbment is a round dial again, with the slots on a regular hexagon as in game.</li>
-          <li>New: party status (HP, EP, CP and gear as of the last save), party Arts, status protection, healing items in the bag, and look-up tables for quartz and accessories.</li>
-          <li>Accessory stats, quartz effects and Art costs now come from the game's own tables instead of guides.</li>
-          <li>Spacing and navigation tidied; the nav marks the section you are reading.</li>
-        </ul>
-        <h3>v18 — 2026-10-05</h3>
-        <ul class="notes">
-          <li>Chapters. Notes for every remaining chapter are written and sealed; the live page opens each one when your save reaches it, and the published page asks before opening the next.</li>
-          <li>The party is read from the save. Cards follow who is actually in your party, with reserve builds kept below.</li>
-          <li>Orbment lines now follow the real path from the center outwards, taken from the game's own table.</li>
-          <li>Arts for each layout are computed from the game's Arts table.</li>
-          <li>The upgrade list counts copies, so it works once rank 4 quartz can be synthesized.</li>
-          <li>New design.</li>
-        </ul>
-        <h3>v17 — 2026-10-05</h3>
-        <ul class="notes">
-          <li>Live mode: run the local server and the page follows your save by itself.</li>
-        </ul>
-        <h3>v16 — 2026-10-05</h3>
-        <ul class="notes">
-          <li>Synced to the actual save file. Slot locks and quartz values checked against the game's own data.</li>
-          <li>Accessories corrected to what you own. Boss prep uses accessories already in your bag.</li>
-        </ul>
-        <h3>v15 and earlier</h3>
-        <ul class="notes">
-          <li>Moved from a Markdown file to this page; slot locks read from screenshots; Bastion moved from Kloe to Zin; Action 4 moved from Estelle to Schera.</li>
-        </ul>
-      </details>
-      <p class="quiet foot-meta"><span id="meta-version"></span></p>
       </div>
     </section>
   </main>
@@ -275,6 +332,8 @@
   <footer class="wrap foot">
     <p>Personal playthrough notes. Unofficial; not affiliated with Nihon Falcom or the game's publishers.</p>
   </footer>
+
+  <div id="tip" class="tip" role="tooltip" hidden></div>
 
   <script src="data.js"></script>
   <script src="game-data.js"></script>

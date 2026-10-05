@@ -23,7 +23,7 @@ This opens http://localhost:8733 and follows your save by itself:
 - party Arts shows who can cast what with the quartz slotted right now
 - status protection shows who resists what, and which spare accessory in the bag would cover a gap
 - the bag lists healing items, spare quartz and spare accessories, each with what it does
-- it uses the game's own art: character portraits, quartz, item and element icons, and the orbment face
+- it uses the game's own art: the menu backdrop and window furniture, character portraits, cut-ins and standing art, quartz, item, element and status icons, and the orbment face
 
 It updates a few seconds after the game writes a save (the autosave slot is written every few minutes and after menu changes). No reload, no buttons.
 
@@ -31,9 +31,11 @@ It updates a few seconds after the game writes a save (the autosave slot is writ
 
 ## Game art
 
-The live server reads a few textures from your own install the first time it needs them and writes them to `assets/`: the icon sheet, the orbment face, and one round portrait per character. `assets/` is in `.gitignore`. The art belongs to the game's publisher, so it is never committed or published; the GitHub Pages copy draws its own orbs and uses initials instead.
+The page is styled after the game's own menus: the camp and orbment screens for lists, the Bracer Notebook for notes. All of that is drawn in CSS, so the published copy needs no images.
 
-Portraits are extracted one at a time and only for characters who are in your save, and the server refuses to serve any other. `node tools/extract-assets.js --clean` deletes the folder; `node server.js --no-assets` runs without it.
+On top of that, the live server reads some textures from your own install the first time it needs them and writes them to `assets/`: the icon sheet, the orbment face, menu furniture (backdrop, window corners, gears, the Bracer emblem, menu icons), and per character a round portrait, a cut-in strip and the standing art. `assets/` is in `.gitignore`. The art belongs to the game's publisher, so it is never committed or published; only the extractor is. The GitHub Pages copy keeps the drawn look.
+
+Character art is extracted one character at a time and only for characters who are in your save, and the server refuses to serve any other. `node tools/extract-assets.js --clean` deletes the folder; `node server.js --no-assets` runs without it.
 
 ## Spoilers
 

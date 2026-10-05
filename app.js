@@ -248,20 +248,9 @@
     });
   }
 
-  // ---- pieces ----
-  function swapItem(it) {
-    var li = el('li');
-    add(li, el('span', 'pos', it.pos));
-    if (it.from) add(li, el('span', 'from', it.from), el('span', 'arrow', '→'));
-    var to = el('strong', 'to');
-    add(to, G.quartz[it.to] && art() ? mark(quartz(it.to).el, 'quartz') : itemIcon((G.accessories[it.to] || [])[2]), document.createTextNode(it.to));
-    li.appendChild(to);
-    if (it.where) add(li, el('span', 'where', it.where));
-    return li;
-  }
-
   // ---- the game's own art, when the live server has extracted it from your install ----
   function art() { return live && live.assets ? live.assets : null; }
+  function hasArt(kind, id) { var a = art(); return !!(a && a[kind] && a[kind].indexOf(id) !== -1); }
   // one cell of the game's icon sheet (48 px cells, 21 per row)
   function sheet(cell, cls) {
     var s = el('span', 'gi' + (cls ? ' ' + cls : ''));
@@ -271,15 +260,62 @@
     return s;
   }
   var SHEET_ROW = { art: 42, element: 63, quartz: 84 };
-  // the mark in front of an element, Art or quartz name: the game's icon, or a coloured dot
+  // status icons, matched to their names with the game's Combat Notebook
+  var STATUS_CELL = { Poison: 315, Petrify: 316, Burn: 317, Freeze: 318, Sleep: 319, Seal: 320, Mute: 321, Confuse: 322, Blind: 323, Delay: 324, 'Stat Debuff': 325, Deathblow: 326 };
+  // the mark in front of an element, Art or quartz name: the game's icon, or a drawn orb
   function mark(element, kind, cls) {
     var a = art(), i = ELS.indexOf(element);
     if (a && a.icons && i !== -1) return sheet(SHEET_ROW[kind] + i, cls);
-    return el('span', 'dot el-' + element + (cls ? ' ' + cls : ''));
+    return el('span', 'dot el-' + element + (kind === 'quartz' ? ' dot-orb' : '') + (cls ? ' ' + cls : ''));
   }
   function itemIcon(cell, cls) {
     var a = art();
     return a && a.icons && cell != null ? sheet(cell, cls) : null;
+  }
+  function statusIcon(name) { return itemIcon(STATUS_CELL[name]); }
+
+  // The round badge that opens every title banner: a gear, a red seal, and a menu icon on it.
+  // The icon is the game's when its art is there (cell = its place in assets/ui/menu.png),
+  // otherwise a drawn one (symbol = an <svg> symbol in index.html).
+  var NS = 'http://www.w3.org/2000/svg';
+  function medal(symbol, cell, cls) {
+    var m = el('span', 'medal' + (cls ? ' ' + cls : ''));
+    m.setAttribute('aria-hidden', 'true');
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'mi-svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    var use = document.createElementNS(NS, 'use');
+    use.setAttribute('href', '#i-' + symbol);
+    svg.appendChild(use);
+    var i = el('i', 'mi');
+    i.style.setProperty('--i', cell);
+    return add(m, svg, i);
+  }
+  // A title banner, as at the top of each in-game menu: "Orbment-Quartz".
+  function banner(badge, small, big, tag) {
+    var h = el('header', 'banner');
+    var bar = el('div', 'banner-bar');
+    var t = el(tag || 'h2', 'gold');
+    if (small) t.appendChild(el('span', 't-sm', small + '-'));
+    t.appendChild(document.createTextNode(big));
+    bar.appendChild(t);
+    add(h, badge, bar);
+    return { node: h, bar: bar, title: t };
+  }
+  // The dark header strip of a list window: "Quartz ......... Unequipped/Total".
+  function pillHead(left, right, tag) {
+    var h = el(tag || 'h4', 'pill-head');
+    var l = el('span');
+    if (typeof left === 'string') l.textContent = left; else l.appendChild(left);
+    h.appendChild(l);
+    if (right != null) h.appendChild(typeof right === 'string' ? el('span', '', right) : right);
+    return h;
+  }
+  function lvBadge(level) {
+    var b = el('span', 'lv');
+    b.title = 'Level ' + level;
+    add(b, el('small', '', 'Lv'), el('b', '', String(level)));
+    return b;
   }
 
   function shortName(name) { return name === 'Scherazard' ? 'Schera' : name; }
@@ -296,8 +332,7 @@
     var hue = HUE[id];
     if (hue == null) { hue = 0; for (var i = 0; i < id.length; i++) hue = (hue * 31 + id.charCodeAt(i)) % 360; }
     a.style.setProperty('--h', hue);
-    var got = art();
-    if (got && got.faces.indexOf(id) !== -1) {
+    if (hasArt('faces', id)) {
       var img = el('img');
       img.src = 'assets/face/' + id + '.png';
       img.alt = '';
@@ -310,11 +345,178 @@
     return a;
   }
 
+  // ---- help window ----
+  // Hover, focus or tap anything given a tip and a window says what it is, in the manner of the
+  // help bar at the bottom of the game's menus.
+  var tipBox = byId('tip');
+  var tipFor = null;
+  function tip(node, build, focusable) {
+    node._tip = build;
+    node.classList.add('has-tip');
+    if (focusable) node.tabIndex = 0;
+    return node;
+  }
+  function tipTarget(n) {
+    while (n && n !== document) { if (n._tip) return n; n = n.parentNode; }
+    return null;
+  }
+  function placeTip() {
+    if (!tipFor) return;
+    if (!document.body.contains(tipFor)) { hideTip(); return; }
+    var r = tipFor.getBoundingClientRect();
+    var anchor = tipFor.querySelector('.orb') || tipFor;
+    var a = anchor.getBoundingClientRect();
+    var w = tipBox.offsetWidth, h = tipBox.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    var left = Math.max(8, Math.min(vw - w - 8, a.left + a.width / 2 - w / 2));
+    var top = a.top - h - 10;
+    var below = top < 8;
+    if (below) top = Math.min(vh - h - 8, r.bottom + 10);
+    tipBox.style.left = Math.round(left) + 'px';
+    tipBox.style.top = Math.round(Math.max(8, top)) + 'px';
+    tipBox.classList.toggle('is-below', below);
+    tipBox.style.setProperty('--arrow', Math.round(Math.max(18, Math.min(w - 18, a.left + a.width / 2 - left))) + 'px');
+  }
+  function showTip(node) {
+    var body = node._tip();
+    if (!body) { hideTip(); return; }
+    tipFor = node;
+    tipBox.textContent = '';
+    tipBox.appendChild(body);
+    tipBox.hidden = false;
+    placeTip();
+  }
+  function hideTip() { tipFor = null; tipBox.hidden = true; }
+  document.addEventListener('mouseover', function (e) {
+    var n = tipTarget(e.target);
+    if (n) { if (n !== tipFor) showTip(n); } else if (tipFor) hideTip();
+  });
+  document.addEventListener('touchstart', function (e) {
+    var n = tipTarget(e.target);
+    if (n) { if (n !== tipFor) showTip(n); } else if (tipFor) hideTip();
+  }, { passive: true });
+  document.addEventListener('focusin', function (e) { var n = tipTarget(e.target); if (n) showTip(n); });
+  document.addEventListener('focusout', function () { hideTip(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideTip(); });
+  window.addEventListener('scroll', placeTip, { passive: true });
+  window.addEventListener('resize', hideTip);
+
+  function valueText(v) {
+    return ELS.map(function (e, i) { return v[i] ? EL_NAME[e] + ' ' + v[i] : ''; }).filter(Boolean).join(' · ');
+  }
+  function resistText(res) {
+    return Object.keys(res || {}).map(function (s) { return (s === 'Status Ailments' ? 'all status ailments' : s) + ' ' + res[s] + '%'; }).join(', ');
+  }
+  // where your copies of a quartz or accessory are
+  function ownedText(name, kind) {
+    if (!live) return '';
+    var on = [], bag = 0;
+    Object.keys(live.characters).forEach(function (id) {
+      var lc = live.characters[id];
+      if (kind === 'quartz') ORDER.forEach(function (k) { if (lc.slots[k] === name) on.push(lc.name); });
+      else lc.accessories.forEach(function (a) { if (a === name) on.push(lc.name); });
+    });
+    live.bag[kind === 'quartz' ? 'quartz' : 'accessories'].forEach(function (x) { if (x.name === name) bag = x.count; });
+    var bits = [];
+    if (on.length) bits.push((kind === 'quartz' ? 'slotted on ' : 'worn by ') + on.join(', '));
+    if (bag) bits.push(bag + ' spare in your bag');
+    return bits.length ? 'Yours: ' + bits.join(' · ') : 'You do not have one yet.';
+  }
+  function tipFrame(icon, name, sub) {
+    var box = el('div', 'tip-in');
+    var head = el('p', 'tip-name');
+    add(head, icon, el('strong', '', name));
+    if (sub) head.appendChild(el('span', 'tip-sub', sub));
+    box.appendChild(head);
+    return box;
+  }
+  function tipLine(box, cls, text) { if (text) box.appendChild(el('p', cls, text)); return box; }
+
+  // ctx (all optional): { pos, lock, has, later, missing }
+  function tipQuartz(name, ctx) {
+    ctx = ctx || {};
+    if (!name) {
+      var empty = tipFrame(null, (ctx.pos ? ctx.pos + ' slot' : 'Slot') + ': empty');
+      return tipLine(empty, 'tip-meta', ctx.lock ? 'Only takes ' + EL_NAME[ctx.lock] + ' quartz.' : 'Takes any quartz.');
+    }
+    var q = quartz(name);
+    var box = tipFrame(mark(q.el, 'quartz'), name);
+    var line = el('p', 'tip-line');
+    line.appendChild(el('span', '', EL_NAME[q.el] + ' Element [Elemental Value:'));
+    var any = false;
+    ELS.forEach(function (e, i) {
+      if (!q.v[i]) return;
+      any = true;
+      var one = el('span', 'tip-val');
+      one.title = EL_NAME[e];
+      add(one, mark(e, 'element'), document.createTextNode('×' + q.v[i]));
+      if (!art()) one.appendChild(el('span', 'tip-el', ' ' + EL_NAME[e]));
+      line.appendChild(one);
+    });
+    if (!any) line.appendChild(el('span', '', 'none'));
+    line.lastChild.appendChild(document.createTextNode(']'));
+    box.appendChild(line);
+    tipLine(box, 'tip-fx', q.fx || 'No extra effect.');
+    var res = resistText(q.res);
+    if (res && q.fx.toLowerCase().indexOf('resist') === -1) tipLine(box, 'tip-fx', 'Resists ' + res);
+    if (ctx.pos) {
+      var slot = ctx.pos + ' slot' + (ctx.lock ? ' · only takes ' + EL_NAME[ctx.lock] : '');
+      if (ctx.missing) slot += ' · you do not own this one yet';
+      else if (ctx.change) slot += ' · currently holds ' + (ctx.has || 'nothing');
+      tipLine(box, 'tip-meta', slot);
+      if (ctx.later) tipLine(box, 'tip-meta', 'Upgrade to ' + ctx.later + ' when you have it.');
+    }
+    tipLine(box, 'tip-meta', ownedText(name, 'quartz'));
+    var src = CH && CH.sources[name];
+    if (src) tipLine(box, 'tip-meta', 'Find it: ' + src.where + (src.tag ? ' (' + src.tag + ')' : '') + (src.also ? ' · also ' + src.also : ''));
+    return box;
+  }
+  function tipAccessory(name) {
+    var g = G.accessories[name] || ['', {}];
+    var box = tipFrame(itemIcon(g[2]), name, 'Accessory');
+    tipLine(box, 'tip-fx', g[0]);
+    var res = resistText(g[1]);
+    if (res) tipLine(box, 'tip-fx', 'Resists ' + res);
+    if (!g[0] && !res) tipLine(box, 'tip-meta', 'No stats on record.');
+    return tipLine(box, 'tip-meta', ownedText(name, 'accessory'));
+  }
+  function tipArt(a, casters) {
+    var box = tipFrame(mark(a.el, 'art'), a.name, 'EP ' + a.ep);
+    tipLine(box, 'tip-fx', a.d);
+    var need = ELS.map(function (e) { return a.req[e] ? EL_NAME[e] + ' ' + a.req[e] : ''; }).filter(Boolean).join(' + ');
+    if (need) tipLine(box, 'tip-meta', 'Needs on one line: ' + need);
+    if (casters) tipLine(box, 'tip-meta', 'Cast by ' + casters);
+    return box;
+  }
+  function tipItem(name, text) {
+    return tipLine(tipFrame(itemIcon(1), name), 'tip-fx', text || 'No description on record.');
+  }
+  function tipText(title, text) { return tipLine(tipFrame(null, title), 'tip-meta', text); }
+  // a quartz or accessory name with its icon, and a tip
+  function thing(name, tag, cls) {
+    var isQ = !!G.quartz[name];
+    var n = el(tag || 'span', (cls ? cls + ' ' : '') + 'thing');
+    add(n, isQ ? mark(quartz(name).el, 'quartz') : itemIcon((G.accessories[name] || [])[2]), document.createTextNode(name));
+    if (isQ) tip(n, function () { return tipQuartz(name); });
+    else if (G.accessories[name]) tip(n, function () { return tipAccessory(name); });
+    return n;
+  }
+
+  // ---- pieces ----
+  function swapItem(it) {
+    var li = el('li', 'row swap');
+    add(li, el('span', 'pos', it.pos));
+    var what = el('span', 'swap-what');
+    if (it.from) add(what, it.from === 'empty' ? el('span', 'from', 'empty') : thing(it.from, 'span', 'from'), el('span', 'arrow', '▸'));
+    what.appendChild(thing(it.to, 'strong', 'to'));
+    li.appendChild(what);
+    if (it.where) li.appendChild(el('span', 'where', it.where));
+    return li;
+  }
+
   // cells[k] = { name, ok, change, has, later, missing }
   function renderOrbment(lines, locks, cells) {
     var got = art();
     var wrap = el('div', 'orbment' + (got && got.dial ? ' has-dial' : ''));
-    var NS = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
     svg.setAttribute('aria-hidden', 'true');
@@ -356,7 +558,7 @@
       var node = el('div', 'slot' + (c.change ? ' is-change' : '') + (c.ok ? ' is-ok' : '') + (c.later ? ' is-pending' : '') + (c.name ? '' : ' is-empty'));
       node.style.left = POS[k][0].toFixed(2) + '%';
       node.style.top = POS[k][1].toFixed(2) + '%';
-      node.title = POS_NAME[k] + (c.name ? ': ' + c.name + (q.fx ? ' — ' + q.fx : '') : ': empty');
+      node.setAttribute('aria-label', POS_NAME[k] + ' slot: ' + (c.name || 'empty'));
       var orb = el('span', 'orb' + (q ? ' el-' + q.el : ' orb-empty'));
       if (q && got && got.icons) {
         orb.classList.add('orb-art');
@@ -365,20 +567,23 @@
       }
       if (c.ok) orb.appendChild(el('span', 'check', '✓'));
       add(node, orb, el('span', 'q', c.name || 'empty'));
-      if (lock) node.appendChild(el('span', 'sub lockname el-text-' + lock, EL_NAME[lock] + ' only'));
+      if (lock) node.appendChild(el('span', 'sub lockname lock-' + lock, EL_NAME[lock] + ' only'));
       if (c.change) node.appendChild(el('span', 'sub had', 'has ' + (c.has || 'nothing')));
       if (c.later) node.appendChild(el('span', 'sub later', 'later: ' + c.later));
+      tip(node, function () {
+        return tipQuartz(c.name, { pos: POS_NAME[k], lock: lock, has: c.has, change: c.change, later: c.later, missing: c.missing });
+      }, true);
       wrap.appendChild(node);
     });
     return wrap;
   }
 
+  // The Value box of the orbment menu: one row per line, one column per element.
   function renderValues(lines, nameAt, caption) {
-    var box = el('div', 'values');
+    var box = el('div', 'window values');
     var table = el('table', 'value-table');
-    table.appendChild(el('caption', '', caption));
     var hr = el('tr');
-    hr.appendChild(el('th', '', ''));
+    hr.appendChild(el('th', 'value-cap', caption));
     ELS.forEach(function (e) {
       var th = el('th');
       add(th, mark(e, 'element'), el('span', 'el-abbr', EL_SHORT[e]));
@@ -403,19 +608,20 @@
   function accessoryText(name) {
     var g = G.accessories[name];
     if (!g) return name;
-    var blocks = Object.keys(g[1]).map(function (s) { return (s === 'Status Ailments' ? 'all status ailments' : s) + ' ' + g[1][s] + '%'; });
-    return name + (g[0] ? ' — ' + g[0] : '') + (blocks.length ? ' · resists ' + blocks.join(', ') : '');
+    var res = resistText(g[1]);
+    return (g[0] || '') + (g[0] && res ? ' · ' : '') + (res ? 'resists ' + res : '');
   }
 
-  function artChips(list, cls) {
-    var p = el('p', 'chips art-chips');
+  // The "Usable Arts / EP Cost" list of the orbment menu.
+  function artRows(list, cls) {
+    var ul = el('ul', 'rows rows-arts');
     list.forEach(function (a) {
-      var c = el('span', 'chip art ' + (cls || '') + ' el-' + a.el);
-      c.title = 'EP ' + a.ep + ' — ' + a.d;
-      add(c, mark(a.el, 'art'), document.createTextNode(a.name));
-      p.appendChild(c);
+      var li = el('li', 'row art-row el-' + a.el + (cls ? ' ' + cls : ''));
+      add(li, mark(a.el, 'art'), el('span', 'art-n', a.name), el('span', 'ep', String(a.ep)));
+      tip(li, function () { return tipArt(a); });
+      ul.appendChild(li);
     });
-    return p;
+    return ul;
   }
 
   function renderCharacter(id, m, isReserve) {
@@ -426,25 +632,24 @@
     var lines = lc ? lc.lines : b.lines;
     var locks = lc ? lc.locks : b.locks;
 
-    var card = el('article', 'card char');
+    var card = el('article', 'screen char' + (isReserve ? ' is-reserve' : ''));
     card.id = 'char-' + id;
-    var head = el('header', 'char-head');
-    var who = el('div', 'char-who');
-    var title = el('div', 'char-title');
-    title.appendChild(el('h3', '', name));
+    var badge = el('span', 'medal medal-face');
+    badge.appendChild(avatar(id, name));
+    var head = banner(badge, 'Orbment', name, 'h3');
+    head.node.classList.add('banner-char');
     var todo = alloc && alloc.todo ? alloc.todo : [];
-    if (lc && alloc) title.appendChild(el('span', 'status ' + (todo.length ? 'status-todo' : 'status-ok'), todo.length ? todo.length + ' to change' : '✓ matches your save'));
-    if (lc && !alloc) title.appendChild(el('span', 'status status-none', 'no build notes this chapter'));
-    add(who, title, el('p', 'role', b ? b.role : 'Shown as slotted in your save.'));
-    add(head, avatar(id, name), who);
-    if (lc) {
-      var st = el('p', 'stats');
-      [['Lv', lc.level], ['HP', lc.hp], ['EP', lc.ep]].forEach(function (x) {
-        st.appendChild(add(el('span', 'stat'), el('b', '', x[0]), document.createTextNode(String(x[1]))));
-      });
-      head.appendChild(st);
+    if (lc && alloc) head.bar.appendChild(el('span', 'state ' + (todo.length ? 'state-todo' : 'state-ok'), todo.length ? todo.length + ' to change' : '✓ matches your save'));
+    if (lc && !alloc) head.bar.appendChild(el('span', 'state state-none', 'no build notes this chapter'));
+    head.bar.appendChild(el('p', 'banner-sub', b ? b.role : 'Shown as slotted in your save.'));
+    if (hasArt('eyes', id)) {
+      var eyes = el('span', 'eyes');
+      eyes.style.backgroundImage = 'url(assets/eyes/' + id + '.png)';
+      eyes.setAttribute('aria-hidden', 'true');
+      head.bar.appendChild(eyes);
+      head.node.classList.add('has-eyes');
     }
-    card.appendChild(head);
+    card.appendChild(head.node);
 
     var cells = {}, nameAt = {}, fullAt = {};
     ORDER.forEach(function (k) {
@@ -452,11 +657,20 @@
       var a = alloc[k], has = lc ? lc.slots[k] : null;
       nameAt[k] = a.name;
       fullAt[k] = b.slots[k].t;
-      cells[k] = { name: a.name, later: a.later, ok: !!lc && has === a.name, change: !!lc && has !== a.name, has: has };
+      cells[k] = { name: a.name, later: a.later, missing: a.missing, ok: !!lc && has === a.name, change: !!lc && has !== a.name, has: has };
     });
 
     var body = el('div', 'char-body');
-    body.appendChild(renderOrbment(lines, locks, cells));
+    var left = el('div', 'char-dial');
+    if (lc) {
+      var mini = el('div', 'mini-status');
+      add(mini, lvBadge(lc.level));
+      if (lc.now) add(mini, meter('HP', lc.now.hp, lc.hp, 'meter-hp'), meter('EP', lc.now.ep, lc.ep, 'meter-ep'));
+      else add(mini, el('span', 'mini-num', 'HP ' + lc.hp), el('span', 'mini-num', 'EP ' + lc.ep));
+      left.appendChild(mini);
+    }
+    left.appendChild(renderOrbment(lines, locks, cells));
+    body.appendChild(left);
     var side = el('div', 'char-side');
 
     if (alloc) {
@@ -467,58 +681,68 @@
         var src = CH.sources[alloc[k].later];
         later.push({ pos: POS_NAME[k], from: alloc[k].name, to: alloc[k].later, where: src ? src.where : '' });
       });
-      var changes = el('div', 'changes');
+      var changes = el('div', 'window changes');
       if (lc && !now.length) changes.appendChild(el('p', 'allset', later.length ? '✓ Slotted correctly for what you own.' : '✓ Matches the build. This is the final layout for this chapter.'));
       if (!lc && !later.length) changes.appendChild(el('p', 'allset', 'This is the final layout for this chapter.'));
       var list = function (heading, cls, items) {
         if (!items.length) return;
-        changes.appendChild(el('h4', cls, heading));
-        var ul = el('ul', 'swap-list');
+        changes.appendChild(pillHead(heading, String(items.length)));
+        var ul = el('ul', 'rows ' + cls);
         items.forEach(function (it) { ul.appendChild(swapItem(it)); });
         changes.appendChild(ul);
       };
-      list(isReserve ? 'Differs from the build' : 'Swap now', 'h-now', now);
-      list('Upgrade when you have it', 'h-later', later);
+      list(isReserve ? 'Differs from the build' : 'Swap now', 'rows-now', now);
+      list('Upgrade when you have it', 'rows-later', later);
       side.appendChild(changes);
     }
 
-    side.appendChild(renderValues(lines, nameAt, alloc ? 'In-game Value box should read' : 'Value box'));
+    side.appendChild(renderValues(lines, nameAt, alloc ? 'Value' : 'Value'));
 
     var have = artsFor(lines, nameAt);
     var full = alloc ? artsFor(lines, fullAt) : have;
     var names = {};
     have.forEach(function (a) { names[a.name] = true; });
     var gain = full.filter(function (a) { return !names[a.name]; });
-    var arts = details('arts-' + id, 'Arts with this layout (' + have.length + ')' + (gain.length ? ' · ' + gain.length + ' more after upgrades' : ''), '', window.innerWidth >= 860);
-    arts.appendChild(artChips(have));
-    if (gain.length) add(arts, el('h4', 'h-later', 'Unlocked by the upgrades'), artChips(gain, 'art-later'));
+    var arts = el('div', 'window arts-window');
+    arts.appendChild(pillHead('Usable Arts (' + have.length + ')', 'EP Cost'));
+    if (have.length) arts.appendChild(artRows(have));
+    else arts.appendChild(el('p', 'quiet', 'None with this layout.'));
+    if (gain.length) {
+      arts.appendChild(pillHead('Unlocked by the upgrades (' + gain.length + ')', 'EP Cost'));
+      arts.appendChild(artRows(gain, 'art-later'));
+    }
     side.appendChild(arts);
 
     if (b && b.accessories.length || lc) {
-      var acc = el('p', 'acc');
-      acc.appendChild(el('span', 'acc-label', 'Accessories'));
-      var missing = false;
-      (b ? b.accessories : []).forEach(function (a) {
+      var acc = el('div', 'window acc');
+      acc.appendChild(pillHead('Accessories', lc ? 'Worn' : null));
+      var ul = el('ul', 'rows');
+      var want = b ? b.accessories : [];
+      want.forEach(function (a) {
         var on = lc && lc.accessories.indexOf(a) !== -1;
-        if (lc && !on) missing = true;
-        var chip = el('span', 'chip' + (lc ? (on ? ' chip-ok' : ' chip-missing') : ''));
-        add(chip, itemIcon((G.accessories[a] || [])[2]), document.createTextNode((on ? '✓ ' : '') + a));
-        chip.title = accessoryText(a);
-        acc.appendChild(chip);
+        var li = el('li', 'row acc-row' + (lc ? (on ? ' is-on' : ' is-missing') : ''));
+        add(li, thing(a, 'span', 'acc-n'), el('span', 'acc-fx', accessoryText(a)));
+        if (lc) li.appendChild(el('span', 'acc-state', on ? '✓' : 'not worn'));
+        ul.appendChild(li);
       });
-      if (lc && (missing || !b || !b.accessories.length)) {
-        acc.appendChild(el('span', 'acc-wearing', 'wearing ' + lc.accessories.map(function (x) { return x || 'nothing'; }).join(' + ')));
-      }
+      if (lc) lc.accessories.forEach(function (a) {
+        if (!a || want.indexOf(a) !== -1) return;
+        var li = el('li', 'row acc-row is-other');
+        add(li, thing(a, 'span', 'acc-n'), el('span', 'acc-fx', accessoryText(a)), el('span', 'acc-state', want.length ? 'worn instead' : 'worn'));
+        ul.appendChild(li);
+      });
+      if (!ul.children.length) ul.appendChild(el('li', 'row quiet', 'none'));
+      acc.appendChild(ul);
       side.appendChild(acc);
     }
     body.appendChild(side);
     card.appendChild(body);
 
     if (b && b.notes.length) {
-      var d = details('notes-' + id, 'Why, and things to know');
-      var ul = el('ul', 'notes');
-      b.notes.forEach(function (n) { ul.appendChild(rich('li', '', n)); });
-      d.appendChild(ul);
+      var d = details('notes-' + id, 'Why, and things to know', 'memo');
+      var nl = el('ul', 'notes');
+      b.notes.forEach(function (n) { nl.appendChild(rich('li', '', n)); });
+      d.appendChild(nl);
       card.appendChild(d);
     }
     return card;
@@ -544,13 +768,13 @@
     var box = el('div', 'meter ' + cls);
     var pct = max ? Math.max(0, Math.min(100, Math.round(now / max * 100))) : 0;
     if (cls !== 'meter-cp' && pct < 90) box.classList.add(pct < 50 ? 'is-low' : 'is-part');
-    var top = el('div', 'meter-top');
-    add(top, el('span', 'meter-label', label), el('span', 'meter-num', now + ' / ' + max));
+    var num = el('span', 'meter-num');
+    add(num, el('b', '', String(now)), document.createTextNode(' / '), el('span', '', String(max)));
     var bar = el('div', 'meter-bar');
     var fill = el('span');
     fill.style.width = pct + '%';
     bar.appendChild(fill);
-    return add(box, top, bar);
+    return add(box, el('span', 'meter-label', label), num, bar);
   }
 
   function renderStatus(m) {
@@ -565,23 +789,40 @@
     ids.forEach(function (id) {
       var lc = live.characters[id];
       var bench = m.active.indexOf(id) === -1;
-      var row = el('div', 'st-row' + (bench ? ' is-bench' : ''));
+      var box = el('article', 'st-card' + (bench ? ' is-bench' : ''));
+      if (hasArt('bodies', id)) {
+        var fig = el('img', 'st-art');
+        fig.src = 'assets/body/' + id + '.png';
+        fig.alt = '';
+        fig.loading = 'lazy';
+        box.appendChild(fig);
+        box.classList.add('has-figure');
+      }
+      var main = el('div', 'st-main');
       var who = el('div', 'st-who');
-      add(who, avatar(id, lc.name), add(el('div', 'st-name'), el('strong', '', lc.name), el('span', 'st-sub', 'Lv ' + lc.level + (bench ? ' · reserve' : ''))));
-      var gear = el('div', 'st-gear');
+      add(who, lvBadge(lc.level), avatar(id, lc.name), el('strong', 'st-name', lc.name), bench ? el('span', 'st-tag', 'Reserve') : null);
+      var gear = el('ul', 'st-gear');
       var cells = lc.icons || {};
       [['Weapon', lc.weapon, cells.weapon], ['Armor', lc.armor, cells.armor], ['Footwear', lc.shoes, cells.shoes]].forEach(function (g) {
-        var icon = g[1] ? itemIcon(g[2], 'gi-lg') : null;
-        var text = add(el('span', 'gear-text'), el('b', '', g[0]), document.createTextNode(g[1] || 'none'));
-        add(gear, add(el('span', 'gear' + (g[1] ? '' : ' gear-none') + (icon ? ' has-icon' : '')), icon, text));
+        var li = el('li', 'gear' + (g[1] ? '' : ' gear-none'));
+        add(li, g[1] ? itemIcon(g[2]) : null, el('b', '', g[0]), document.createTextNode(g[1] || 'none'));
+        gear.appendChild(li);
       });
-      add(row, who, meter('HP', lc.now.hp, lc.hp, 'meter-hp'), meter('EP', lc.now.ep, lc.ep, 'meter-ep'), meter('CP', lc.now.cp, lc.now.cpMax, 'meter-cp'), gear);
-      host.appendChild(row);
+      lc.accessories.forEach(function (a) {
+        var li = el('li', 'gear' + (a ? '' : ' gear-none'));
+        if (a) add(li, itemIcon((G.accessories[a] || [])[2]), el('b', '', 'Accessory'), document.createTextNode(a));
+        else add(li, el('b', '', 'Accessory'), document.createTextNode('none'));
+        if (a && G.accessories[a]) tip(li, function () { return tipAccessory(a); });
+        gear.appendChild(li);
+      });
+      add(main, who, meter('HP', lc.now.hp, lc.hp, 'meter-hp'), meter('EP', lc.now.ep, lc.ep, 'meter-ep'), meter('CP', lc.now.cp, lc.now.cpMax, 'meter-cp'), gear);
+      box.appendChild(main);
+      host.appendChild(box);
       var low = [lc.now.hp < lc.hp * 0.9 ? 'HP' : '', lc.now.ep < lc.ep * 0.9 ? 'EP' : ''].filter(Boolean);
       if (!bench && low.length) short.push(lc.name + ' (' + low.join(', ') + ')');
     });
     var note = byId('status-note');
-    note.className = short.length ? 'quiet' : 'allset';
+    note.className = 'helpbar ' + (short.length ? 'is-warn' : 'is-ok');
     note.textContent = short.length ? 'Running low: ' + short.join(', ') + '.' : '✓ Nobody in the party is below 90% HP or EP.';
   }
 
@@ -596,6 +837,7 @@
     });
     byId('arts-hint').textContent = (live ? 'Worked out from what is slotted in your save right now.' : 'Worked out from the layouts above, for what you have ticked.')
       + ' EP is the base cost, before EP Cut.';
+    var casters = function (a) { return list.filter(function (c) { return who[a.name][c.id]; }).map(function (c) { return c.name; }).join(', '); };
     var avatars = function (a) {
       var p = el('span', 'who');
       list.forEach(function (c) { if (who[a.name][c.id]) p.appendChild(avatar(c.id, c.name, 'avatar-xs', true)); });
@@ -603,13 +845,12 @@
     };
 
     var support = G.arts.filter(function (a) { return who[a.name] && a.k === 's'; });
-    host.appendChild(el('h3', 'block-h', 'Support Arts'));
-    if (!support.length) host.appendChild(el('p', 'quiet', 'None with the current layouts.'));
+    if (!support.length) add(host, pillHead('Support Arts', null, 'h4'), el('p', 'quiet', 'None with the current layouts.'));
     else {
       var wrap = el('div', 'table-scroll');
-      var t = el('table', 'matrix arts-matrix');
+      var t = el('table', 'list matrix arts-matrix');
       var hr = el('tr');
-      add(hr, el('th', '', 'Art'), el('th', 'num', 'EP'));
+      add(hr, el('th', '', 'Support Arts'), el('th', 'num', 'EP'));
       list.forEach(function (c) {
         var th = el('th', 'col-who');
         add(th, avatar(c.id, c.name, 'avatar-xs', true), el('span', 'col-name', shortName(c.name)));
@@ -624,10 +865,11 @@
         add(tr, th, el('td', 'num', String(a.ep)));
         list.forEach(function (c) {
           var td = el('td', 'col-who');
-          if (who[a.name][c.id]) td.appendChild(avatar(c.id, c.name, 'avatar-xs', true));
+          if (who[a.name][c.id]) td.appendChild(el('span', 'yes', '●'));
           else td.appendChild(el('span', 'no', '·'));
           tr.appendChild(td);
         });
+        tip(tr, function () { return tipArt(a, casters(a)); });
         tb.appendChild(tr);
       });
       t.appendChild(tb);
@@ -635,7 +877,7 @@
       host.appendChild(wrap);
     }
 
-    host.appendChild(el('h3', 'block-h', 'Attack Arts by element'));
+    host.appendChild(pillHead('Attack Arts by element', 'EP · who', 'h4'));
     var grid = el('div', 'el-rows');
     ELS.forEach(function (e) {
       var arts = G.arts.filter(function (a) { return who[a.name] && a.k === 'a' && a.el === e; });
@@ -644,8 +886,8 @@
       var chips = el('div', 'chips');
       arts.forEach(function (a) {
         var chip = el('span', 'chip art-who');
-        chip.title = a.name + ' — EP ' + a.ep + '. ' + a.d;
-        add(chip, document.createTextNode(a.name), el('span', 'ep', String(a.ep)), avatars(a));
+        add(chip, el('span', 'art-n', a.name), el('span', 'ep', String(a.ep)), avatars(a));
+        tip(chip, function () { return tipArt(a, casters(a)); });
         chips.appendChild(chip);
       });
       if (!arts.length) chips.appendChild(el('span', 'quiet', 'no one in the party has one'));
@@ -686,7 +928,7 @@
       return res.some(function (r) { return r[s]; }) || spare[s] || (s !== 'Status Ailments' && s !== 'Slow');
     });
     var wrap = el('div', 'table-scroll');
-    var t = el('table', 'matrix guard-matrix' + (live ? '' : ' no-spare'));
+    var t = el('table', 'list matrix guard-matrix' + (live ? '' : ' no-spare'));
     t.style.setProperty('--n', list.length);
     var hr = el('tr');
     hr.appendChild(el('th', '', 'Status'));
@@ -700,19 +942,25 @@
     var tb = el('tbody');
     rows.forEach(function (s) {
       var tr = el('tr');
-      tr.appendChild(el('th', '', s === 'Status Ailments' ? 'All status ailments' : s));
+      var label = s === 'Status Ailments' ? 'All status ailments' : s;
+      tr.appendChild(add(el('th', 'st-name-cell'), statusIcon(s), document.createTextNode(label)));
       res.forEach(function (r, i) {
         var td = el('td', 'col-who');
         var x = r[s];
         var pill = el('span', 'res ' + (x ? (x.pct >= 100 ? 'res-full' : 'res-part') : 'res-none'), x ? x.pct + '%' : '–');
-        pill.title = x ? list[i].name + ': ' + x.pct + '% from ' + x.from : list[i].name + ' has no protection';
+        tip(pill, function () {
+          return tipText(list[i].name + ' · ' + label, x ? x.pct + '% from ' + x.from + (x.pct >= 100 ? ' (immune)' : '') : 'No protection.');
+        });
         td.appendChild(pill);
         tr.appendChild(td);
       });
       if (live) {
         var td = el('td', 'col-spare');
         (spare[s] || []).sort(function (a, b) { return b.pct - a.pct; }).slice(0, 3).forEach(function (x) {
-          td.appendChild(el('span', 'chip chip-sm', x.name + ' ' + x.pct + '%' + (x.count > 1 ? ' ×' + x.count : '')));
+          var chip = el('span', 'chip chip-sm');
+          add(chip, itemIcon((G.accessories[x.name] || [])[2]), document.createTextNode(x.name + ' ' + x.pct + '%' + (x.count > 1 ? ' ×' + x.count : '')));
+          tip(chip, function () { return tipAccessory(x.name); });
+          td.appendChild(chip);
         });
         tr.appendChild(td);
       }
@@ -724,9 +972,6 @@
   }
 
   // Look-up tables for everything named on this page.
-  function valueText(v) {
-    return ELS.map(function (e, i) { return v[i] ? EL_NAME[e] + ' ' + v[i] : ''; }).filter(Boolean).join(' · ');
-  }
   function renderReference(m) {
     var shown = CH.characters.filter(function (c) { return m.alloc[c.id]; });
     var people = live ? Object.keys(live.characters).map(function (id) { return live.characters[id]; }) : [];
@@ -754,7 +999,7 @@
     qnames.forEach(function (n) {
       var q = quartz(n);
       var tr = el('tr');
-      add(tr, add(el('th', 'el-' + q.el), mark(q.el, 'quartz'), document.createTextNode(n)), el('td', '', valueText(q.v)), el('td', '', q.fx || '—'),
+      add(tr, thing(n, 'th', 'el-' + q.el), el('td', '', valueText(q.v)), el('td', '', q.fx || '—'),
         el('td', where[n] ? '' : 'quiet', where[n] ? where[n].join(', ') : (live ? 'not owned yet' : '—')));
       qt.appendChild(tr);
     });
@@ -773,7 +1018,7 @@
       var g = G.accessories[n] || ['', {}];
       var blocks = Object.keys(g[1]).map(function (s) { return (s === 'Status Ailments' ? 'All status ailments' : s) + ' ' + g[1][s] + '%'; }).join(', ');
       var tr = el('tr');
-      add(tr, el('th', '', n), el('td', '', g[0] || '—'), el('td', '', blocks || '—'), el('td', aw[n].length ? '' : 'quiet', aw[n].length ? aw[n].join(', ') : 'not owned'));
+      add(tr, thing(n, 'th'), el('td', '', g[0] || '—'), el('td', '', blocks || '—'), el('td', aw[n].length ? '' : 'quiet', aw[n].length ? aw[n].join(', ') : 'not owned'));
       at.appendChild(tr);
     });
     byId('ref-acc-n').textContent = String(anames.length);
@@ -812,6 +1057,18 @@
     return t;
   }
 
+  // A page of the Bracer Notebook: the frame for everything that is prose rather than a list.
+  function notebook(tabSmall, tabBig, title) {
+    var n = el('section', 'note');
+    var tab = el('span', 'note-tab');
+    add(tab, el('small', '', tabSmall), document.createTextNode(tabBig));
+    var page = el('div', 'note-page');
+    if (title) page.appendChild(el('h2', 'note-h', title));
+    add(n, tab, page);
+    return { node: n, page: page };
+  }
+  function chapterLabel() { return live && live.chapter ? live.chapter.title.replace(/:.*$/, '') : (CH ? CH.title : ''); }
+
   function renderOverview(m) {
     var host = byId('overview');
     host.textContent = '';
@@ -827,8 +1084,8 @@
       tile('Still to get', left + ' of ' + m.rows.length, left ? 'upgrades waiting' : 'all upgrades in place', left ? '' : 'tile-ok'));
     host.appendChild(tiles);
 
-    var card = el('section', 'card');
-    card.appendChild(el('h2', '', 'This chapter'));
+    var nb = notebook('Notes', chapterLabel(), 'This chapter');
+    var card = nb.page;
     CH.intro.forEach(function (p) { card.appendChild(rich('p', '', p)); });
     var p = CH.party;
     if (p.rules && p.rules.length) {
@@ -847,7 +1104,7 @@
       card.appendChild(d);
     }
     if (!live) card.appendChild(renderManualControls());
-    host.appendChild(card);
+    host.appendChild(nb.node);
   }
 
   function renderManualControls() {
@@ -877,28 +1134,34 @@
   function renderNow(m) {
     var host = byId('now-body');
     host.textContent = '';
+    host.className = 'panel';
+    byId('now-count').textContent = live ? (m.todo.length ? m.todo.length + (m.todo.length === 1 ? ' change' : ' changes') : 'all set') : '';
     if (!live) {
       host.appendChild(el('p', 'quiet', 'Tick what you own in the upgrade list below. The diagrams switch each slot to its upgrade as you tick, and show what to slot in the meantime.'));
       return;
     }
     if (!m.todo.length) {
-      add(host, el('p', 'allset big', '✓ Everything matches the build for what you own.'),
+      host.classList.add('is-done');
+      add(host, el('span', 'stamp'), el('p', 'allset big', '✓ Everything matches the build for what you own.'),
         el('p', 'quiet', 'New steps appear here by themselves when you get a quartz from the list below, or when the party changes.'));
       return;
     }
     host.appendChild(el('p', 'quiet', m.todo.length + (m.todo.length === 1 ? ' change' : ' changes') + ' between your save and the build. Updates by itself after the game saves.'));
     var groups = {};
     m.todo.forEach(function (t) { (groups[t.id] = groups[t.id] || []).push(t); });
+    var grid = el('div', 'todo-grid');
     m.active.forEach(function (id) {
       if (!groups[id]) return;
       var g = el('div', 'todo-group');
-      var h = el('h3', 'todo-who');
-      add(h, avatar(id, groups[id][0].who), document.createTextNode(groups[id][0].who), el('span', 'count', String(groups[id].length)));
-      var ul = el('ul', 'swap-list');
+      var who = el('a', 'todo-who');
+      who.href = '#char-' + id;
+      add(who, avatar(id, groups[id][0].who, 'avatar-xs'), document.createTextNode(groups[id][0].who));
+      var ul = el('ul', 'rows rows-now');
       groups[id].forEach(function (t) { ul.appendChild(swapItem(t)); });
-      add(g, h, ul);
-      host.appendChild(g);
+      add(g, pillHead(who, String(groups[id].length), 'h3'), ul);
+      grid.appendChild(g);
     });
+    host.appendChild(grid);
   }
 
   function renderGet(m) {
@@ -910,7 +1173,10 @@
       var tr = el('tr', r.done ? 'is-found' : '');
       var tdCheck = el('td', 'col-check');
       if (live) {
-        tdCheck.appendChild(el('span', 'have ' + (r.done ? 'have-ok' : ''), r.done ? '✓' : r.got + '/' + r.wants.length));
+        var have = el('span', 'have ' + (r.done ? 'have-ok' : (r.got ? 'have-part' : 'have-none')));
+        add(have, el('b', '', String(r.got)), document.createTextNode('/ ' + r.wants.length));
+        have.title = r.got + ' of ' + r.wants.length + ' in place';
+        tdCheck.appendChild(have);
       } else {
         var label = el('label', 'tick');
         var box = el('input');
@@ -922,7 +1188,7 @@
         tdCheck.appendChild(label);
       }
       var tdName = el('td', 'col-name');
-      add(tdName, mark(q.el, 'quartz'), el('strong', '', r.name));
+      tdName.appendChild(thing(r.name, 'strong'));
       if (q.fx) tdName.appendChild(el('span', 'fx', q.fx));
       var tdWhere = el('td', 'col-where', r.src ? r.src.where : '');
       if (r.src && r.src.tag) tdWhere.appendChild(el('span', 'tag', r.src.tag));
@@ -938,7 +1204,7 @@
       body.appendChild(tr);
     });
     var left = m.rows.filter(function (r) { return !r.done; }).length;
-    byId('get-count').textContent = left ? left + ' of ' + m.rows.length + ' still to get' : 'All in place';
+    byId('get-count').textContent = left ? left + ' of ' + m.rows.length + ' still to get' : 'all in place';
     byId('get-hint').textContent = live
       ? 'What the party you have now is waiting for, in priority order. Counted from your save: bag plus everything slotted.'
       : 'Tick what you own and the diagrams below update. Ticks are saved on this device.';
@@ -964,31 +1230,31 @@
     var card = byId('bag');
     card.hidden = !live;
     if (!live) return;
-    var chips = function (hostId, list, describe) {
+    var rows = function (hostId, list, describe) {
       var host = byId(hostId);
       host.textContent = '';
-      if (!list.length) { host.appendChild(el('span', 'quiet', 'none')); return; }
+      if (!list.length) { host.appendChild(el('li', 'row quiet', 'none')); return; }
       list.forEach(function (x) {
         var d = describe(x.name);
-        var chip = el('span', 'chip' + (d.cls ? ' ' + d.cls : ''));
-        if (d.icon) chip.appendChild(d.icon);
-        chip.appendChild(document.createTextNode(x.name));
-        if (x.count > 1) chip.appendChild(el('span', 'n', '×' + x.count));
-        if (d.title) chip.title = d.title;
-        host.appendChild(chip);
+        var li = el('li', 'row item-row' + (d.cls ? ' ' + d.cls : ''));
+        add(li, d.icon, el('span', 'item-n', x.name), el('span', 'n', '×' + x.count));
+        if (d.tip) tip(li, d.tip);
+        host.appendChild(li);
       });
     };
     var supplies = live.bag.supplies || [];
     var kind = function (k) { return supplies.filter(function (x) { return x.kind === k; }); };
-    var supply = function (name) { return { title: G.supplies[name] || '', icon: itemIcon(1) }; };
-    chips('bag-recovery', kind('Recovery'), supply);
-    chips('bag-support', kind('Support'), supply);
+    var supply = function (name) { return { icon: itemIcon(1), tip: function () { return tipItem(name, G.supplies[name]); } }; };
+    rows('bag-recovery', kind('Recovery'), supply);
+    rows('bag-support', kind('Support'), supply);
     byId('bag-supplies').hidden = !supplies.length;
-    chips('bag-quartz', live.bag.quartz, function (name) {
+    rows('bag-quartz', live.bag.quartz, function (name) {
       var q = quartz(name);
-      return { cls: 'el-' + q.el, icon: mark(q.el, 'quartz'), title: valueText(q.v) + (q.fx ? ' — ' + q.fx : '') };
+      return { cls: 'el-' + q.el, icon: mark(q.el, 'quartz'), tip: function () { return tipQuartz(name); } };
     });
-    chips('bag-accessories', live.bag.accessories, function (name) { return { title: accessoryText(name), icon: itemIcon((G.accessories[name] || [])[2]) }; });
+    rows('bag-accessories', live.bag.accessories, function (name) {
+      return { icon: itemIcon((G.accessories[name] || [])[2]), tip: function () { return tipAccessory(name); } };
+    });
     var total = function (list) { return list.reduce(function (n, x) { return n + x.count; }, 0); };
     byId('bag-quartz-n').textContent = total(live.bag.quartz) + ' spare';
     byId('bag-accessories-n').textContent = total(live.bag.accessories) + ' spare';
@@ -1042,18 +1308,18 @@
     var host = byId('sections');
     host.textContent = '';
     CH.sections.forEach(function (s) {
-      var card = el('section', 'card' + (s.spoiler ? ' spoiler' : ''));
-      card.id = 'sec-' + s.id;
-      card.appendChild(el('h2', '', s.title));
-      var into = card;
+      var nb = notebook(chapterLabel(), s.title.replace(/^Chapter notes$/, 'Notes'), s.title);
+      nb.node.id = 'sec-' + s.id;
+      if (s.spoiler) nb.node.classList.add('spoiler');
+      var into = nb.page;
       if (s.spoiler) {
         var sum = el('span');
         add(sum, document.createTextNode('Show ' + s.title.toLowerCase() + ' '), el('span', 'tag tag-warn', s.spoiler));
         into = details('sec-' + chapterN + '-' + s.id, sum);
-        card.appendChild(into);
+        nb.page.appendChild(into);
       }
       s.blocks.forEach(function (b, i) { into.appendChild(block(b, 'blk-' + chapterN + '-' + s.id + '-' + i)); });
-      host.appendChild(card);
+      host.appendChild(nb.node);
     });
   }
 
@@ -1061,10 +1327,11 @@
     var nav = byId('jump');
     nav.textContent = '';
     var link = function (href, text, node) {
-      var a = el('a', node ? 'jump-who' : '', node ? null : text);
+      var a = el('a', node ? 'jump-who' : 'tab', node ? null : text);
       a.href = href;
       if (node) { a.appendChild(node); a.title = text; a.setAttribute('aria-label', text); }
       nav.appendChild(a);
+      return a;
     };
     link('#overview', 'Overview');
     link('#now', 'Next steps');
@@ -1091,8 +1358,9 @@
     var current = null;
     for (var i = 0; i < links.length; i++) {
       var target = document.getElementById(links[i].getAttribute('href').slice(1));
-      if (target && !target.hidden && target.getBoundingClientRect().top < 140) current = links[i];
+      if (target && !target.hidden && target.getBoundingClientRect().top < 150) current = links[i];
     }
+    if (!current && links.length) current = links[0];
     if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4 && links.length) current = links[links.length - 1];
     for (var j = 0; j < links.length; j++) links[j].classList.toggle('is-current', links[j] === current);
     if (current && nav.scrollWidth > nav.clientWidth) {
@@ -1111,9 +1379,12 @@
   });
 
   function render() {
+    hideTip();
     renderMast();
     var app = byId('app');
-    document.body.classList.toggle('has-art', !!art());
+    var a = art();
+    document.body.classList.toggle('has-art', !!a);
+    document.body.classList.toggle('has-ui', !!(a && a.ui));
     app.classList.toggle('is-empty', !CH);
     byId('notice').hidden = !notice;
     byId('notice').textContent = notice;

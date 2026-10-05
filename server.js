@@ -11,11 +11,11 @@
 // unpacked when its timestamp or size changes, which is whenever the game writes a save.
 // The page is told about changes over a single kept-open connection, so it does not poll.
 //
-// Spoiler gate: chapter notes are only served up to the chapter the save is in, and a portrait
-// only for a character who is in the save.
+// Spoiler gate: chapter notes are only served up to the chapter the save is in, and character
+// art only for a character who is in the save.
 //
-// Game art (icons, portraits, the orbment face) is read from your own install into assets/ the
-// first time it is needed. assets/ stays on this PC.
+// Game art (menu furniture, icons, portraits, the orbment face) is read from your own install
+// into assets/ the first time it is needed. assets/ stays on this PC.
 //
 // Read-only, local only (127.0.0.1), no dependencies. Needs Node 22.15+.
 
@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
 const { loadGame, newestSave, readSaveFile, SAVE_DIR } = require('./tools/read-save.js');
-const { ensureAssets, ASSET_DIR } = require('./tools/extract-assets.js');
+const { ensureAssets, ASSET_DIR, UI_FILES } = require('./tools/extract-assets.js');
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => { const i = args.indexOf('--' + name); return i !== -1 && args[i + 1] ? Number(args[i + 1]) : fallback; };
@@ -108,12 +108,16 @@ const server = http.createServer((req, res) => {
     serveFile(res, path.join('chapters', 'ch' + Number(chapter[1]) + '.dat'));
     return;
   }
-  const asset = /^\/assets\/(icons|dial|face\/([a-z]+))\.png$/.exec(url);
+  const asset = /^\/assets\/(?:(icons|dial)|ui\/([a-z-]+)|(face|eyes|body)\/([a-z]+))\.png$/.exec(url);
   if (asset) {
     const got = current && current.assets;
-    const ok = got && (asset[2] ? got.faces.indexOf(asset[2]) !== -1 && current.characters[asset[2]] : got[asset[1]]);
+    const kinds = { face: 'faces', eyes: 'eyes', body: 'bodies' };
+    let ok = false, file = '';
+    if (got && asset[1]) { ok = !!got[asset[1]]; file = asset[1]; }
+    else if (got && asset[2]) { ok = !!got.ui && UI_FILES.indexOf(asset[2]) !== -1; file = path.join('ui', asset[2]); }
+    else if (got) { ok = got[kinds[asset[3]]].indexOf(asset[4]) !== -1 && !!current.characters[asset[4]]; file = path.join(asset[3], asset[4]); }
     if (!ok) { res.writeHead(404); res.end('Not found'); return; }
-    fs.readFile(path.join(ASSET_DIR, asset[1] + '.png'), (err, body) => {
+    fs.readFile(path.join(ASSET_DIR, file + '.png'), (err, body) => {
       if (err) { res.writeHead(404); res.end('Not found'); return; }
       res.writeHead(200, { 'Content-Type': MIME['.png'], 'Cache-Control': 'max-age=86400' });
       res.end(body);
