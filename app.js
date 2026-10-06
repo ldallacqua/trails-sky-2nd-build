@@ -998,14 +998,19 @@
       st.text.forEach(function (x) { now.appendChild(rich('p', '', x)); });
       card.appendChild(now);
     }
+    var lineup = lineupBlock(m, nameOf);
+    if (lineup) card.appendChild(lineup);
     CH.intro.forEach(function (x) { card.appendChild(rich('p', '', x)); });
-    var rules = (st && st.rules) || p.rules;
+    // the lineup block says who is fixed and who is a pick; the plain rules are only for
+    // chapters without one, and for a stretch that has more to say (who is away, and why)
+    var rules = (st && st.rules) || (lineup ? null : p.rules);
     if (rules && rules.length) {
       var ul = el('ul', 'party-list');
       rules.forEach(function (r) { add(ul, add(el('li'), el('strong', '', r.who), el('span', '', r.text))); });
       card.appendChild(ul);
     }
-    if (p.note && !(st && st.rules)) card.appendChild(rich('p', 'quiet', p.note));
+    // the chapter's general note gives way to the stretch the save is in
+    if (p.note && !st) card.appendChild(rich('p', 'quiet', p.note));
     if (p.later && p.later.length) {
       var s = el('span');
       add(s, document.createTextNode('Party changes later this chapter '), el('span', 'tag tag-warn', 'light spoilers, this chapter only'));
@@ -1017,6 +1022,48 @@
     }
     if (!live) card.appendChild(renderManualControls());
     host.appendChild(nb.node);
+  }
+
+  // Who to field right now: the members the game requires, then the best of the others who
+  // are with you, each with the reason. With a save, it also says where your four differ.
+  function lineupSwapText(L, nameOf) {
+    return L.swaps.map(function (s) { return 'Bring ' + nameOf(s['in']) + ' in for ' + nameOf(s.out) + '.'; }).join(' ');
+  }
+  function lineupBlock(m, nameOf) {
+    var L = m.lineup;
+    if (!L || !L.pick.length) return null;
+    var box = el('div', 'lineup' + (L.same ? '' : ' is-off'));
+    var head = el('p', 'lineup-head');
+    add(head, el('strong', '', L.set ? 'Lineup set by the game' : (live ? 'Suggested lineup right now' : 'Suggested lineup')));
+    if (live && !L.set) head.appendChild(el('span', 'tag ' + (L.same ? 'tag-ok' : 'tag-warn'), L.same ? '✓ your save matches' : 'differs from your save'));
+    box.appendChild(head);
+    var ul = el('ul', 'lineup-list');
+    L.pick.forEach(function (id) {
+      var fixed = L.fixed.indexOf(id) !== -1, isNew = live && m.active.indexOf(id) === -1;
+      var li = el('li', (fixed ? 'is-fixed' : '') + (isNew ? ' is-new' : ''));
+      var who = el('p', 'lineup-who');
+      add(who, avatar(id, nameOf(id), 'avatar-sm'), el('strong', '', nameOf(id)),
+        L.set ? null : el('span', 'tag ' + (fixed ? 'tag-fixed' : 'tag-pick'), fixed ? 'Fixed' : 'Pick'),
+        isNew ? el('span', 'tag tag-warn', 'Not in your four') : null);
+      li.appendChild(who);
+      var why = fixed ? (L.set ? '' : 'The game requires this member here.') : L.why[id];
+      if (why) li.appendChild(el('p', 'lineup-why', why));
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    if (!L.same) box.appendChild(el('p', 'lineup-swap', lineupSwapText(L, nameOf) + ' The steps below follow the four you field, so they change once the game saves with the new lineup.'));
+    var bench = L.bench.filter(function (e) { return e.away || L.why[e.id]; });
+    if (bench.length) {
+      var d = details('lineup-bench', document.createTextNode('Why not the others'));
+      var bl = el('ul', 'notes');
+      bench.forEach(function (e) {
+        bl.appendChild(add(el('li'), el('strong', '', nameOf(e.id) + ': '), document.createTextNode(e.away ? 'away for this stretch.' : L.why[e.id])));
+      });
+      d.appendChild(bl);
+      box.appendChild(d);
+    }
+    if (L.note) box.appendChild(rich('p', 'quiet', L.note));
+    return box;
   }
 
   function renderManualControls() {
@@ -1056,6 +1103,14 @@
     // a live server started before v24 does not say which objective the save is at
     else if (!('objective' in live)) host.appendChild(el('p', 'helpbar is-warn', 'To follow where in the chapter you are, the page needs the newer live server. Close the start-live.cmd window and run it again.'));
     if (m.stage && m.stage.note) host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', m.stage.title + ' · '), document.createTextNode(m.stage.note)));
+    // the four in the save are not the four the notes would field here
+    if (m.lineup && !m.lineup.same) {
+      var nameOf = function (id) { var b = buildOf(id); return b ? b.name : (live.characters[id] ? live.characters[id].name : id); };
+      var why = m.lineup.swaps.map(function (s) { return s.why; }).filter(Boolean).join(' ');
+      var bar = add(el('a', 'helpbar is-stage is-lineup'), el('strong', '', 'Lineup · '), document.createTextNode(lineupSwapText(m.lineup, nameOf) + (why ? ' ' + why : '')));
+      bar.href = '#overview';
+      host.appendChild(bar);
+    }
     // upgrades the plan wants but the bag cannot pay for yet, and ones that are hardly worth it
     var held = function (heading, list) {
       list = list.filter(function (e) { return m.active.indexOf(e.id) !== -1; });

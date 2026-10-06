@@ -142,16 +142,26 @@
     var owned = JSON.parse(JSON.stringify(free));
     m.matsHave = JSON.parse(JSON.stringify(mats));
 
-    // takes one free copy and says where it physically is
+    // takes one free copy and says where it physically is; `took` remembers it for release()
+    var took = null;
     function claim(name, id) {
       free[name]--;
+      took = null;
       if (!live) return '';
       var i, pick = -1;
-      for (i = 0; i < holders.length; i++) if (holders[i].name === name && holders[i].id === id) { holders.splice(i, 1); return 'worn'; }
-      if (bag[name] > 0) { bag[name]--; return 'in your bag'; }
+      for (i = 0; i < holders.length; i++) if (holders[i].name === name && holders[i].id === id) { took = { h: holders.splice(i, 1)[0] }; return 'worn'; }
+      if (bag[name] > 0) { bag[name]--; took = { bag: true }; return 'in your bag'; }
       for (i = 0; i < holders.length && pick === -1; i++) if (holders[i].name === name && holders[i].bench) pick = i;
       for (i = holders.length - 1; i >= 0 && pick === -1; i--) if (holders[i].name === name) pick = i;
-      return pick === -1 ? 'in your bag' : 'take it from ' + holders.splice(pick, 1)[0].who;
+      if (pick === -1) return 'in your bag';
+      took = { h: holders.splice(pick, 1)[0] };
+      return 'take it from ' + took.h.who;
+    }
+    // puts a claimed copy back where it was: the plan decided against the upgrade it was for
+    function release(name, t) {
+      free[name]++;
+      if (t && t.bag) bag[name]++;
+      else if (t && t.h) holders.push(t.h);
     }
     function reach(n, id, mayBuy) {
       var g = G.gear[n], e = null;
@@ -164,7 +174,7 @@
       if (!mayBuy) return null;
       if (g.from && isOpen(g.up)) {
         var base = g.from[0], bg = G.gear[base];
-        if (free[base] > 0) e = { how: 'craft', base: base, baseWhere: claim(base, id), mats: g.from[1] };
+        if (free[base] > 0) { e = { how: 'craft', base: base, baseWhere: claim(base, id), mats: g.from[1] }; e.took = took; }
         else if (bg && isOpen(bg.sell)) e = { how: 'buycraft', base: base, mats: g.from[1], price: bg.p };
       }
       if (!e && isOpen(g.sell)) e = { how: 'buy', price: g.p };
@@ -204,7 +214,7 @@
       for (var i = 0; i < list.length; i++) {
         if (list[i].n === e.name) continue;
         var r = reach(list[i].n, e.id, isActive(e.id));
-        if (r && r.mats && !anyCost) { if (r.how === 'craft') free[r.base]++; continue; }
+        if (r && r.mats && !anyCost) { if (r.how === 'craft') release(r.base, r.took); continue; }
         if (r) { r.name = list[i].n; return r; }
       }
       return null;
@@ -271,9 +281,13 @@
       // under six points per U-Material is a small gain for the cost: offered, not planned
       if (e.worth / units(e) < 6) {
         var opt = { id: e.id, who: e.who, label: e.label, has: e.has, name: e.name, text: gearHow(e), gain: e.gain };
+        // the piece this upgrade would have been made from is free again: without this, someone
+        // already wearing it was told to buy a second one
+        if (e.how === 'craft') release(e.base, e.took);
         var alt = instead(e, !live);
+        if (!alt && e.how === 'craft') { e.baseWhere = claim(e.base, e.id); e.took = took; }
         if (alt) {
-          ['name', 'how', 'where', 'base', 'baseWhere', 'mats', 'price'].forEach(function (k) { if (alt[k] == null) delete e[k]; else e[k] = alt[k]; });
+          ['name', 'how', 'where', 'base', 'baseWhere', 'mats', 'price', 'took'].forEach(function (k) { if (alt[k] == null) delete e[k]; else e[k] = alt[k]; });
           opt.gain = gearGain(opt.name, e.name);
           e.gain = e.how === 'ok' ? '' : gearGain(e.name, e.has);
           e.option = opt;
@@ -311,6 +325,42 @@
     return null;
   }
 
+  // ---- the lineup the notes suggest for where the save is ----
+  // The members the game requires come first, then the others in the order the notes rank
+  // them, as far as they are with you. Members the notes rank as equals do not displace each
+  // other: whichever of them is already in the party stays.
+  function lineupNow() {
+    if (!CH || !CH.party || !CH.party.lineup) return null;
+    var st = stageNow();
+    var L = (st && st.lineup) || CH.party.lineup;
+    var out = { stage: st && st.lineup ? st.title : '', set: L.set, note: L.note, pick: [], fixed: [], why: {}, bench: [], swaps: [], same: true };
+    L.rank.forEach(function (r) { out.why[r.id] = r.why; });
+    if (!live) {
+      // no save: the chapter's four, as the notes give them
+      out.pick = (CH.party.pick || []).slice();
+      out.fixed = L.fixed.filter(function (id) { return out.pick.indexOf(id) !== -1; });
+      return out;
+    }
+    var party = live.party.slice(), roster = party.concat(live.reserve);
+    if (L.set) { out.pick = party; out.fixed = party.slice(); return out; }
+    var here = function (id) { return roster.indexOf(id) !== -1 && L.away.indexOf(id) === -1; };
+    var inParty = function (id) { return party.indexOf(id) !== -1; };
+    var pick = L.fixed.filter(here).slice(0, party.length);
+    out.fixed = pick.slice();
+    var ranked = L.rank.filter(function (r) { return here(r.id) && pick.indexOf(r.id) === -1; }).map(function (r, i) { return { id: r.id, tier: r.tier, i: i }; });
+    ranked.sort(function (a, b) { return a.tier - b.tier || (inParty(b.id) - inParty(a.id)) || a.i - b.i; });
+    ranked.forEach(function (r) { if (pick.length < party.length) pick.push(r.id); });
+    // anyone the notes do not rank, and last of all whoever you field, so no slot is left empty
+    var fill = function (ids) { ids.forEach(function (id) { if (pick.length < party.length && pick.indexOf(id) === -1) pick.push(id); }); };
+    fill(party.filter(here)); fill(live.reserve.filter(here)); fill(party);
+    out.pick = pick;
+    out.bench = roster.filter(function (id) { return pick.indexOf(id) === -1; }).map(function (id) { return { id: id, away: L.away.indexOf(id) !== -1 }; });
+    var leave = party.filter(function (id) { return pick.indexOf(id) === -1; });
+    out.swaps = pick.filter(function (id) { return !inParty(id); }).map(function (id, i) { return { 'in': id, out: leave[i] || null, why: out.why[id] || '' }; });
+    out.same = !out.swaps.length;
+    return out;
+  }
+
   // ---- the model: who is in the party, what each slot should hold right now, what to move ----
   // A character's build as the chapter notes give it, with what the current stage says about them.
   function buildOf(id) {
@@ -329,6 +379,7 @@
     var m = { active: [], reserve: [], alloc: {}, todo: [], rows: [] };
     m.stage = stageNow();
     m.objective = live && live.objective ? live.objective.text : '';
+    m.lineup = lineupNow();
     if (live) {
       m.active = live.party.slice();
       m.reserve = live.reserve.filter(function (id) { return buildOf(id); });
@@ -492,7 +543,7 @@
   }
 
   return {
-    use: use, compute: compute, buildOf: buildOf, haveKey: haveKey, stageNow: stageNow,
+    use: use, compute: compute, buildOf: buildOf, haveKey: haveKey, stageNow: stageNow, lineupNow: lineupNow,
     quartz: quartz, lineValues: lineValues, artsFor: artsFor,
     gear: gear, gearScore: gearScore, gearStats: gearStats, gearGain: gearGain, gearHow: gearHow,
     reached: reached, isOpen: isOpen, matsText: matsText, mira: mira, chestText: chestText,

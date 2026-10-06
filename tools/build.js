@@ -309,6 +309,23 @@ function buildChapter(src) {
     return null;
   };
   const known = (id) => characters.some((c) => c.id === id);
+  // A lineup: who the game requires (fixed), who is away, and everyone else best first, each
+  // with the reason. '=' as a third entry means "as good as the one above": the page then
+  // keeps whichever of the two is already in the party. set: the game picks all four itself.
+  const lineupOf = (L, where) => {
+    if (!L) return null;
+    for (const id of (L.fixed || []).concat(L.away || [], (L.rank || []).map((r) => r[0]))) {
+      if (!cidById.has(id)) problems.push(where + ' lineup: nobody in the game is called ' + id);
+    }
+    let tier = 0;
+    return {
+      set: !!L.set, fixed: L.fixed || [], away: L.away || [], note: L.note || '',
+      rank: (L.rank || []).map((r, k) => { if (k && r[2] !== '=') tier++; return { id: r[0], why: r[1] || '', tier }; })
+    };
+  };
+  const party = Object.assign({}, src.party || {});
+  party.lineup = lineupOf(party.lineup, 'ch' + src.n) ||
+    { set: false, fixed: [], away: [], note: '', rank: (party.pick || []).map((id, k) => ({ id, why: '', tier: k })) };
   const stages = (src.stages || []).map((s, i) => {
     const where = 'ch' + src.n + ' stage ' + (i + 1);
     if (s.from == null || !s.title) problems.push(where + ': needs a title and a from');
@@ -318,12 +335,14 @@ function buildChapter(src) {
     }
     return {
       from: flagOf(s.from, where), until: flagOf(s.until, where), title: s.title || '', note: s.note || '', text: s.text || [],
-      party: s.party || null, rules: s.rules || null, characters: s.characters || {}
+      party: s.party || null, rules: s.rules || null, characters: s.characters || {},
+      // a stage that names all four is one where the game sets the lineup
+      lineup: lineupOf(s.lineup, where) || (s.party ? { set: true, fixed: s.party, away: [], note: '', rank: [] } : null)
     };
   });
   return {
     n: src.n, title: src.title, region: src.region || '', intro: src.intro || [],
-    party: src.party || {}, sources: src.sources || {}, quartz, characters,
+    party, sources: src.sources || {}, quartz, characters,
     gearOrder: src.gearOrder || [], gearSrc, stages,
     sections: src.sections || [], source: src
   };

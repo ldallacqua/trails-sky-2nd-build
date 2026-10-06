@@ -91,7 +91,7 @@ function overlay() {
   const out = {
     ok: true, chapter: current.chapter ? current.chapter.title : '', saved: current.save.written,
     art: !!(current.assets && current.assets.icons), faces: current.assets ? current.assets.faces : [],
-    notes: false, steps: [], waiting: 0, optional: 0, stage: '', note: ''
+    notes: false, steps: [], waiting: 0, optional: 0, stage: '', note: '', lineup: '', lineupOk: false
   };
   try {
     const box = { window: {}, atob, TextDecoder, Uint8Array };
@@ -115,6 +115,12 @@ function overlay() {
     out.waiting = m.gearWait.filter(inParty).length;
     out.optional = m.gearOptional.filter(inParty).length;
     if (m.stage) { out.stage = m.stage.title; out.note = m.stage.note; }
+    // the four in the save against the four the notes would field here
+    out.lineupOk = !!(m.lineup && m.lineup.pick.length && m.lineup.same);
+    if (m.lineup && !m.lineup.same) {
+      const nameOf = (id) => (current.characters[id] && current.characters[id].name) || id;
+      out.lineup = m.lineup.swaps.map((s) => 'Bring ' + nameOf(s.in) + ' in for ' + nameOf(s.out) + '.').join(' ');
+    }
   } catch (e) {
     out.problem = n == null ? 'chapter not recognised' : 'no build notes for this chapter';
   }

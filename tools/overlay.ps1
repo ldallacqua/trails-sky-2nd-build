@@ -174,15 +174,23 @@ function Badge([string]$s) {
 }
 function Pill($inner) { Frame $inner ([double]::NaN) '14,7,16,8' }
 # the stretch of the chapter the save is in, when the notes have something to say about it
-function Stage-Line($data, [double]$width) {
-  if (-not $data.note) { return $null }
+function Note-Line([string]$label, [string]$say, [double]$width) {
   $t = New-Object Windows.Controls.TextBlock
   $t.FontSize = 11.5; $t.FontFamily = $fontText; $t.TextWrapping = 'Wrap'; $t.Foreground = (Brush '#E9DFC8'); $t.MaxWidth = $width
-  $name = New-Object Windows.Documents.Run ([string]$data.stage)
+  $name = New-Object Windows.Documents.Run $label
   $name.Foreground = (Brush '#FFE15A'); $name.FontWeight = 'SemiBold'
   [void]$t.Inlines.Add($name)
-  [void]$t.Inlines.Add((New-Object Windows.Documents.Run ("  $DOT  " + [string]$data.note)))
+  [void]$t.Inlines.Add((New-Object Windows.Documents.Run ("  $DOT  " + $say)))
   $t
+}
+function Stage-Line($data, [double]$width) {
+  if (-not $data.note) { return $null }
+  Note-Line ([string]$data.stage) ([string]$data.note) $width
+}
+# the four in the save are not the four the notes would field here
+function Lineup-Line($data, [double]$width) {
+  if (-not $data.lineup) { return $null }
+  Note-Line 'Lineup' ([string]$data.lineup) $width
 }
 function Row-Of($items) {
   $p = New-Object Windows.Controls.StackPanel
@@ -205,12 +213,15 @@ function New-View($data, [string]$mode) {
   if (-not $data.notes) { return $null }
   $steps = @($data.steps)
   if ($steps.Count -eq 0) {
-    $done = Row-Of @((Text $CHECK 15 '#A9FFE4' 'Bold'), (Text '  Everything matches the build' 13 '#A9FFE4' 'SemiBold'))
+    $say = '  Everything matches the build'
+    if ($data.lineupOk) { $say = '  Build and lineup both match' }
+    $done = Row-Of @((Text $CHECK 15 '#A9FFE4' 'Bold'), (Text $say 13 '#A9FFE4' 'SemiBold'))
     $why = Stage-Line $data 330
-    if (-not $why) { return Pill $done }
-    $why.Margin = '0,4,0,1'
+    $four = Lineup-Line $data 330
+    if (-not $why -and -not $four) { return Pill $done }
     $both = New-Object Windows.Controls.StackPanel
-    [void]$both.Children.Add($done); [void]$both.Children.Add($why)
+    [void]$both.Children.Add($done)
+    foreach ($line in @($why, $four)) { if ($line) { $line.Margin = '0,4,0,1'; [void]$both.Children.Add($line) } }
     return Pill $both
   }
   $groups = [ordered]@{}
@@ -239,8 +250,9 @@ function New-View($data, [string]$mode) {
   $rule = New-Object Windows.Shapes.Rectangle
   $rule.Height = 1; $rule.Margin = '0,6,0,2'; $rule.Fill = (Gradient '#D6B160' '#00D6B160' 0)
   [void]$root.Children.Add($rule)
-  $why = Stage-Line $data 390
-  if ($why) { $why.Margin = '0,6,0,0'; [void]$root.Children.Add($why) }
+  foreach ($line in @((Stage-Line $data 390), (Lineup-Line $data 390))) {
+    if ($line) { $line.Margin = '0,6,0,0'; [void]$root.Children.Add($line) }
+  }
 
   $shown = 0; $limit = 9
   foreach ($id in $groups.Keys) {
@@ -308,6 +320,7 @@ function New-View($data, [string]$mode) {
   if ($data.waiting -gt 0) { $notes += ('{0} waiting for materials' -f $data.waiting) }
   $foot = 'Ctrl+Alt+O  list / badge / off'
   if ($notes.Count) { $foot = 'On the page: ' + ($notes -join ', ') + "   $DOT   " + $foot }
+  if ($data.lineupOk) { $foot = "Lineup matches   $DOT   " + $foot }
   $f = Text $foot 10.5 '#8F8576'
   $f.Margin = '0,8,0,0'; $f.HorizontalAlignment = 'Right'
   [void]$root.Children.Add($f)

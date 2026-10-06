@@ -27,6 +27,7 @@ It updates a few seconds after the game saves. No reload, no buttons, nothing to
 ## Highlights
 
 - **Follows the save.** Chapter, active party and reserve, every slot, weapon, armour and accessory, the whole bag, which shop stock the story has opened, and HP, EP and CP as of the last save.
+- **Suggests the four to field.** For the stretch of the chapter your save is in: the members the game requires, then the best of the others who are with you, each with the reason. If your four differ, the page and the overlay say who to bring in for whom.
 - **Knows where in the chapter you are.** The save's story flags say which objective the game is showing. When the story sets the lineup for a stretch, or a decision is about to close something off, the page and the overlay say so at that point and not before.
 - **Works out the Arts for you.** Each orbment's lines are traced the way the game does it, the elemental values are added up, and the page lists every Art that layout can cast, with EP cost.
 - **Plans with what you own.** A slot can name a target quartz and a stand-in. The page picks the best one you actually have and tells you what to swap when a better one turns up.
@@ -182,7 +183,7 @@ Add `?once` to the live URL to read the save a single time without keeping a con
 
 The readable notes live in `chapters-src/` (one `chN.js` per chapter, plus shared templates in `_lib.js`). That folder is not committed; `--unseal` recreates it on a fresh clone. A slot is either a quartz name or `[target, stand-in until you own it]`.
 
-A chapter can also list `stages`: stretches with their own lineup or advice. Each names the objective the game shows when it starts (`from`) and the one it shows when it is over (`until`), and can carry a title, paragraphs of text, a one-line note for the to-do list and the overlay, the lineup rules, and a changed role or extra notes per character. The build looks the objectives up in the game's quest table and stores the story flags behind them; the page shows a stage when the save has the first flag and not the second.
+A chapter can also list `stages`: stretches with their own lineup or advice. Each names the objective the game shows when it starts (`from`) and the one it shows when it is over (`until`), and can carry a title, paragraphs of text, a one-line note for the to-do list and the overlay, the lineup rules, and a changed role or extra notes per character. A chapter, and any stage, can carry a `lineup`: `fixed` (required by the game), `away`, and `rank`, everyone else best first as `[id, reason]`; a third entry `'='` marks someone as good as the one above, so the page keeps whichever of the two you already field. The build looks the objectives up in the game's quest table and stores the story flags behind them; the page shows a stage when the save has the first flag and not the second.
 
 After changing a note, run `node tools/build.js` and commit the regenerated files. Pushing to `main` publishes the page through GitHub Pages.
 
