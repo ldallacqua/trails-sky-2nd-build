@@ -2,7 +2,7 @@
 // Reads the newest Trails in the Sky 2nd Chapter save and reports the chapter, the party,
 // what each character has slotted and equipped (with HP, EP and CP as of the save), and the
 // spare quartz, accessories, gear, healing items and upgrade materials in the bag, plus which
-// tiers of shop stock the story has opened.
+// tiers of shop stock the story has opened and which objective it stands at.
 //
 // Read-only: it never writes to the save folder or the game folder.
 // Needs Node 22.15+ (built-in Zstandard). No dependencies.
@@ -122,7 +122,8 @@ function loadItemNames(kinds, icons) {
 //   people    character id -> { id, name } for everyone who has an orbment
 //   layouts   character id -> { lines: [[slot keys from the center outwards]], locks: { slot: element } }
 //   chapters  chapter number -> title
-//   gates     the story flags that open or close a tier of shop stock
+//   gates     the story flags that open or close a tier of shop stock, or start an objective
+//   objectives  see loadObjectives
 function loadGame() {
   const kinds = new Map(), icons = new Map();
   const items = loadItemNames(kinds, icons);
@@ -163,7 +164,22 @@ function loadGame() {
     const n = ch.b.readUInt16LE(e);
     if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
   }
-  return { items, kinds, icons, people, layouts, chapters, gates: loadShop().gates };
+  const objectives = loadObjectives();
+  const gates = new Set(loadShop().gates);
+  for (const o of objectives) o.from.concat(o.until).forEach((f) => { if (f >= CHAPTER_FLAG) gates.add(f); });
+  return { items, kinds, icons, people, layouts, chapters, objectives, gates: [...gates].sort((a, b) => a - b) };
+}
+
+// The objective list: the one-line goal the game shows while you play. A row is shown from one
+// story flag until another, so the row whose first flag is set and whose second is not is where
+// the story stands. The chapter notes use the same flags to mark stretches of a chapter.
+//   [{ chapter, text, from: [flag], until: [flag] }]
+function loadObjectives() {
+  const t = loadTable('t_quest.tbl');
+  const flags = (e, at) => Array.from({ length: t.b.readUInt32LE(e + at + 8) }, (_, k) => t.b.readUInt16LE(t.b.readUInt32LE(e + at) + k * 2));
+  return t.rows('NaviText').map((e) => ({
+    chapter: t.b.readUInt32LE(e), text: t.str(t.b.readUInt32LE(e + 8)), from: flags(e, 24), until: flags(e, 40)
+  }));
 }
 
 // The shop table. Every town sells from the same lists. A row is on sale once one of its "from"
@@ -288,15 +304,18 @@ function readSaveFile(file, game) {
 
   // Which tiers of shop stock are open: the gate flags that are set. Only trusted when the
   // flags agree with the chapter; otherwise left out, and the page goes by the chapter alone.
-  let story = null;
+  let story = null, objective = null;
   const flag = (f) => !!(b[FLAGS_AT + (f >> 3)] & (1 << (f & 7)));
   if (chapter && game.gates && flag(CHAPTER_FLAG + chapter.n * 1000) && !flag(CHAPTER_FLAG + (chapter.n + 1) * 1000)) {
     story = game.gates.filter(flag);
+    // the objective the game is showing: only reported when exactly one row fits
+    const at = (game.objectives || []).filter((o) => o.chapter === chapter.n && o.from.length && o.from.every(flag) && !o.until.some(flag));
+    if (at.length === 1) objective = { text: at[0].text, from: at[0].from[0] };
   }
-  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag, story };
+  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag, story, objective };
 }
 
-module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, loadTable, loadItemNames, loadGame, loadShop, newestSave, readSaveFile };
+module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, loadTable, loadItemNames, loadGame, loadShop, loadObjectives, newestSave, readSaveFile };
 
 // ---- command line ------------------------------------------------------------
 function main() {
@@ -311,6 +330,7 @@ function main() {
 
   console.log('Save: ' + src.slot + ', written ' + new Date(src.t).toLocaleString());
   console.log('Chapter: ' + (data.chapter ? data.chapter.title : 'not recognised'));
+  if (data.objective) console.log('Objective: ' + data.objective.text);
   const nameOf = (id) => data.characters[id].name;
   console.log('Party: ' + data.party.map(nameOf).join(', ') + (data.reserve.length ? '   Reserve: ' + data.reserve.map(nameOf).join(', ') : '') + '\n');
   for (const c of Object.values(data.characters)) {
@@ -329,7 +349,7 @@ function main() {
   console.log('Spare weapons, armour and footwear in the bag:\n  ' + list(data.bag.gear) + '\n');
   console.log('Upgrade materials:\n  ' + list(data.bag.materials) + '\n');
   console.log('Food: ' + data.bag.food.total + ' across ' + data.bag.food.kinds + ' kinds');
-  console.log('Shop stock: ' + (data.story ? data.story.length + ' tier changes reached' : 'story flags not recognised, going by the chapter'));
+  console.log('Story flags: ' + (data.story ? 'read, ' + data.story.length + ' of the ones the page goes by are set' : 'not recognised, going by the chapter'));
 }
 
 if (require.main === module) {

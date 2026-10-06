@@ -297,10 +297,34 @@ function buildChapter(src) {
   for (const id of (src.party && src.party.pick) || []) {
     if (!characters.some((c) => c.id === id)) problems.push('ch' + src.n + ': party.pick has ' + id + ' but there is no build for them');
   }
+  // Stages: stretches of the chapter with their own lineup or advice. The notes name the
+  // objective the game shows when one starts and the one it shows when it is over; here those
+  // become the story flags the save is checked for.
+  const steps = game.objectives.filter((o) => o.chapter === src.n);
+  const flagOf = (x, where) => {
+    if (x == null) return null;
+    const hit = steps.filter((o) => (typeof x === 'number' ? o.from[0] === x : o.text === x));
+    if (hit.length === 1) return hit[0].from[0];
+    problems.push(where + ': ' + JSON.stringify(x) + (hit.length ? ' is the text of ' + hit.length + ' objectives; give the flag number instead' : ' is not an objective of this chapter'));
+    return null;
+  };
+  const known = (id) => characters.some((c) => c.id === id);
+  const stages = (src.stages || []).map((s, i) => {
+    const where = 'ch' + src.n + ' stage ' + (i + 1);
+    if (s.from == null || !s.title) problems.push(where + ': needs a title and a from');
+    for (const id of (s.party || []).concat(Object.keys(s.characters || {}))) if (!known(id)) problems.push(where + ': there is no build for ' + id);
+    for (const id of Object.keys(s.characters || {})) {
+      for (const k of Object.keys(s.characters[id])) if (k !== 'role' && k !== 'notes') problems.push(where + ' ' + id + ': only role and notes can change with a stage');
+    }
+    return {
+      from: flagOf(s.from, where), until: flagOf(s.until, where), title: s.title || '', note: s.note || '', text: s.text || [],
+      party: s.party || null, rules: s.rules || null, characters: s.characters || {}
+    };
+  });
   return {
     n: src.n, title: src.title, region: src.region || '', intro: src.intro || [],
     party: src.party || {}, sources: src.sources || {}, quartz, characters,
-    gearOrder: src.gearOrder || [], gearSrc,
+    gearOrder: src.gearOrder || [], gearSrc, stages,
     sections: src.sections || [], source: src
   };
 }

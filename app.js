@@ -607,6 +607,11 @@
     add(body, side, acc);
     card.appendChild(body);
 
+    if (b && b.stageNotes && b.stageNotes.length) {
+      var sn = el('ul', 'notes stage-notes');
+      b.stageNotes.forEach(function (n) { sn.appendChild(add(rich('li', '', n), el('span', 'tag tag-now', 'now'))); });
+      card.appendChild(sn);
+    }
     if (b && b.notes.length) {
       var d = details('notes-' + id, 'Why, and things to know', 'memo');
       var nl = el('ul', 'notes');
@@ -984,14 +989,23 @@
 
     var nb = notebook('Notes', chapterLabel(), 'This chapter');
     var card = nb.page;
-    CH.intro.forEach(function (p) { card.appendChild(rich('p', '', p)); });
-    var p = CH.party;
-    if (p.rules && p.rules.length) {
+    var p = CH.party, st = m.stage;
+    // the stretch of the chapter the save is in comes first: it is what applies right now
+    if (st) {
+      var now = el('div', 'stage');
+      add(now, add(el('p', 'stage-head'), el('span', 'tag tag-now', 'Right now'), el('strong', '', st.title),
+        m.objective ? el('span', 'stage-obj', 'your objective: ' + m.objective) : null));
+      st.text.forEach(function (x) { now.appendChild(rich('p', '', x)); });
+      card.appendChild(now);
+    }
+    CH.intro.forEach(function (x) { card.appendChild(rich('p', '', x)); });
+    var rules = (st && st.rules) || p.rules;
+    if (rules && rules.length) {
       var ul = el('ul', 'party-list');
-      p.rules.forEach(function (r) { add(ul, add(el('li'), el('strong', '', r.who), el('span', '', r.text))); });
+      rules.forEach(function (r) { add(ul, add(el('li'), el('strong', '', r.who), el('span', '', r.text))); });
       card.appendChild(ul);
     }
-    if (p.note) card.appendChild(rich('p', 'quiet', p.note));
+    if (p.note && !(st && st.rules)) card.appendChild(rich('p', 'quiet', p.note));
     if (p.later && p.later.length) {
       var s = el('span');
       add(s, document.createTextNode('Party changes later this chapter '), el('span', 'tag tag-warn', 'light spoilers, this chapter only'));
@@ -1039,6 +1053,7 @@
       return;
     }
     if (m.gearStale) host.appendChild(el('p', 'helpbar is-warn', 'Weapon, armour and footwear advice needs the newer live server. Close the start-live.cmd window and run it again.'));
+    if (m.stage && m.stage.note) host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', m.stage.title + ' · '), document.createTextNode(m.stage.note)));
     // upgrades the plan wants but the bag cannot pay for yet, and ones that are hardly worth it
     var held = function (heading, list) {
       list = list.filter(function (e) { return m.active.indexOf(e.id) !== -1; });

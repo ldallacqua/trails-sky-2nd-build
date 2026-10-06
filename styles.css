@@ -707,6 +707,17 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .party-list li { padding: 8px 14px 9px; border: 1px solid #c9d2d9; border-left: 5px solid #1f516f; border-radius: 3px; background: #fbfaf8; }
 .party-list strong { display: block; }
 .party-list span { color: var(--note-soft); font-size: 0.86rem; }
+/* the stretch of the chapter the save is in: a slip pinned over the page */
+.stage { margin: 0 0 18px; padding: 12px 18px 13px; border: 1px solid #e3c9b4; border-left: 6px solid #d63a2b; border-radius: 3px; background: #fffaf1; box-shadow: 0 5px 10px -8px rgba(40, 25, 5, 0.7); }
+.stage p { margin: 7px 0 0; }
+.stage .stage-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 0 2px; }
+.stage-head strong { font-size: 1.16rem; }
+.stage-head .tag { margin-left: 0; align-self: center; }
+.stage-obj { margin-left: auto; color: var(--note-soft); font: 600 0.84rem var(--cond); letter-spacing: 0.08em; text-transform: uppercase; }
+.tag-now, .note .tag-now { background: #d63a2b; color: #fff; }
+.helpbar.is-stage strong { color: var(--num); }
+.stage-notes { list-style: none; margin: 2px 0 6px; padding: 7px 18px 8px; border: 1px solid #e3c9b4; border-left: 7px solid #d63a2b; border-radius: 3px; background: #fffaf1; color: var(--note-ink); }
+.stage-notes li { margin: 2px 0; }
 .manual { margin-top: 16px; padding-top: 12px; border-top: 1px solid #d5dbe0; }
 .manual-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 0; }
 

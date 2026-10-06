@@ -27,6 +27,7 @@ It updates a few seconds after the game saves. No reload, no buttons, nothing to
 ## Highlights
 
 - **Follows the save.** Chapter, active party and reserve, every slot, weapon, armour and accessory, the whole bag, which shop stock the story has opened, and HP, EP and CP as of the last save.
+- **Knows where in the chapter you are.** The save's story flags say which objective the game is showing. When the story sets the lineup for a stretch, or a decision is about to close something off, the page and the overlay say so at that point and not before.
 - **Works out the Arts for you.** Each orbment's lines are traced the way the game does it, the elemental values are added up, and the page lists every Art that layout can cast, with EP cost.
 - **Plans with what you own.** A slot can name a target quartz and a stand-in. The page picks the best one you actually have and tells you what to swap when a better one turns up.
 - **Covers everything you equip.** Weapon, armour and footwear are ranked per character from the game's item, shop and chest tables: what shops sell at this point of the story, which chest holds what, and what an upgrade costs. The page gives each one-copy piece to whoever gains most, checks the cost against the materials in your bag, and sets aside upgrades that are not worth the U-Material.
@@ -122,6 +123,7 @@ The notes cover every chapter, and none of that should leak to someone who is st
 - The live server refuses to hand out a chapter beyond the one in your save.
 - Characters who are not with you in the save are not shown, even when the notes have a build for them.
 - Boss notes and party changes inside a chapter are collapsed until you open them.
+- Advice tied to a stretch of a chapter is only shown once the save's story flags reach that stretch.
 
 ## Built from the game's data
 
@@ -151,7 +153,7 @@ The decoder is in the repo and has no dependencies: `tools/texture.js` unpacks L
 | `model.js` | The plan itself: what each slot and each piece of gear should be given what you own, the steps to get there, the orbment lines and the Arts. Shared by the page and the server. |
 | `server.js` | The local live server: watches the save folder, pushes changes to the page, gates chapters and character art, and works out the steps for the overlay. |
 | `tools/overlay.ps1`, `start-overlay.cmd` | The in-game overlay and its launcher. |
-| `tools/read-save.js` | Reads a save: chapter, party, slots, gear, bag. Also runs on its own. |
+| `tools/read-save.js` | Reads a save: chapter, current objective, party, slots, gear, bag. Also runs on its own. |
 | `tools/build.js` | Validates the chapter notes against the game's tables and writes `chapters/*.dat` and `game-data.js`. |
 | `tools/extract-assets.js`, `tools/texture.js` | Pull art out of the game's image archive and decode it. |
 | `chapters/chN.dat` | Sealed notes, one per chapter. |
@@ -179,6 +181,8 @@ Add `?once` to the live URL to read the save a single time without keeping a con
 ## Editing the notes
 
 The readable notes live in `chapters-src/` (one `chN.js` per chapter, plus shared templates in `_lib.js`). That folder is not committed; `--unseal` recreates it on a fresh clone. A slot is either a quartz name or `[target, stand-in until you own it]`.
+
+A chapter can also list `stages`: stretches with their own lineup or advice. Each names the objective the game shows when it starts (`from`) and the one it shows when it is over (`until`), and can carry a title, paragraphs of text, a one-line note for the to-do list and the overlay, the lineup rules, and a changed role or extra notes per character. The build looks the objectives up in the game's quest table and stores the story flags behind them; the page shows a stage when the save has the first flag and not the second.
 
 After changing a note, run `node tools/build.js` and commit the regenerated files. Pushing to `main` publishes the page through GitHub Pages.
 

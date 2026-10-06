@@ -173,6 +173,17 @@ function Badge([string]$s) {
   $b
 }
 function Pill($inner) { Frame $inner ([double]::NaN) '14,7,16,8' }
+# the stretch of the chapter the save is in, when the notes have something to say about it
+function Stage-Line($data, [double]$width) {
+  if (-not $data.note) { return $null }
+  $t = New-Object Windows.Controls.TextBlock
+  $t.FontSize = 11.5; $t.FontFamily = $fontText; $t.TextWrapping = 'Wrap'; $t.Foreground = (Brush '#E9DFC8'); $t.MaxWidth = $width
+  $name = New-Object Windows.Documents.Run ([string]$data.stage)
+  $name.Foreground = (Brush '#FFE15A'); $name.FontWeight = 'SemiBold'
+  [void]$t.Inlines.Add($name)
+  [void]$t.Inlines.Add((New-Object Windows.Documents.Run ("  $DOT  " + [string]$data.note)))
+  $t
+}
 function Row-Of($items) {
   $p = New-Object Windows.Controls.StackPanel
   $p.Orientation = 'Horizontal'
@@ -194,7 +205,13 @@ function New-View($data, [string]$mode) {
   if (-not $data.notes) { return $null }
   $steps = @($data.steps)
   if ($steps.Count -eq 0) {
-    return Pill (Row-Of @((Text $CHECK 15 '#A9FFE4' 'Bold'), (Text '  Everything matches the build' 13 '#A9FFE4' 'SemiBold')))
+    $done = Row-Of @((Text $CHECK 15 '#A9FFE4' 'Bold'), (Text '  Everything matches the build' 13 '#A9FFE4' 'SemiBold'))
+    $why = Stage-Line $data 330
+    if (-not $why) { return Pill $done }
+    $why.Margin = '0,4,0,1'
+    $both = New-Object Windows.Controls.StackPanel
+    [void]$both.Children.Add($done); [void]$both.Children.Add($why)
+    return Pill $both
   }
   $groups = [ordered]@{}
   foreach ($s in $steps) { if (-not $groups.Contains($s.id)) { $groups[$s.id] = @() }; $groups[$s.id] += $s }
@@ -222,6 +239,8 @@ function New-View($data, [string]$mode) {
   $rule = New-Object Windows.Shapes.Rectangle
   $rule.Height = 1; $rule.Margin = '0,6,0,2'; $rule.Fill = (Gradient '#D6B160' '#00D6B160' 0)
   [void]$root.Children.Add($rule)
+  $why = Stage-Line $data 390
+  if ($why) { $why.Margin = '0,6,0,0'; [void]$root.Children.Add($why) }
 
   $shown = 0; $limit = 9
   foreach ($id in $groups.Keys) {

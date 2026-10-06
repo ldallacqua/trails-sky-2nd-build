@@ -91,7 +91,7 @@ function overlay() {
   const out = {
     ok: true, chapter: current.chapter ? current.chapter.title : '', saved: current.save.written,
     art: !!(current.assets && current.assets.icons), faces: current.assets ? current.assets.faces : [],
-    notes: false, steps: [], waiting: 0, optional: 0
+    notes: false, steps: [], waiting: 0, optional: 0, stage: '', note: ''
   };
   try {
     const box = { window: {}, atob, TextDecoder, Uint8Array };
@@ -114,6 +114,7 @@ function overlay() {
     }));
     out.waiting = m.gearWait.filter(inParty).length;
     out.optional = m.gearOptional.filter(inParty).length;
+    if (m.stage) { out.stage = m.stage.title; out.note = m.stage.note; }
   } catch (e) {
     out.problem = n == null ? 'chapter not recognised' : 'no build notes for this chapter';
   }

@@ -299,14 +299,36 @@
     });
   }
 
+  // ---- stages: stretches of a chapter with their own lineup or advice ----
+  // A stage runs from one story flag until another. Only a save says which one is on, so
+  // without one there is none and the chapter's general notes stand.
+  function stageNow() {
+    if (!live || !live.story || !CH || !CH.stages) return null;
+    for (var i = 0; i < CH.stages.length; i++) {
+      var s = CH.stages[i];
+      if (reached(s.from) && !(s.until && reached(s.until))) return s;
+    }
+    return null;
+  }
+
   // ---- the model: who is in the party, what each slot should hold right now, what to move ----
+  // A character's build as the chapter notes give it, with what the current stage says about them.
   function buildOf(id) {
-    return CH.characters.filter(function (c) { return c.id === id; })[0] || null;
+    var b = CH.characters.filter(function (c) { return c.id === id; })[0] || null;
+    var st = b ? stageNow() : null, over = st && st.characters[id];
+    if (!over) return b;
+    var out = {};
+    Object.keys(b).forEach(function (k) { out[k] = b[k]; });
+    if (over.role) out.role = over.role;
+    if (over.notes) out.stageNotes = over.notes;
+    return out;
   }
   function haveKey(name) { return chapterN + ':' + name; }
 
   function compute() {
     var m = { active: [], reserve: [], alloc: {}, todo: [], rows: [] };
+    m.stage = stageNow();
+    m.objective = live && live.objective ? live.objective.text : '';
     if (live) {
       m.active = live.party.slice();
       m.reserve = live.reserve.filter(function (id) { return buildOf(id); });
@@ -470,7 +492,7 @@
   }
 
   return {
-    use: use, compute: compute, buildOf: buildOf, haveKey: haveKey,
+    use: use, compute: compute, buildOf: buildOf, haveKey: haveKey, stageNow: stageNow,
     quartz: quartz, lineValues: lineValues, artsFor: artsFor,
     gear: gear, gearScore: gearScore, gearStats: gearStats, gearGain: gearGain, gearHow: gearHow,
     reached: reached, isOpen: isOpen, matsText: matsText, mira: mira, chestText: chestText,
