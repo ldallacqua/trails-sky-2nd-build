@@ -117,7 +117,7 @@
     return src ? 'chest, ' + src.where + (src.tag ? ' (' + src.tag + ')' : '') : '';
   }
   // where a piece is sold: any weapon shop, or the one shop that stocks it
-  function shopOf(name) { var g = gear(name); return g && g.at ? g.at : 'a weapon shop'; }
+  function shopOf(name) { var g = gear(name); return g && g.at ? g.at : g && g.shop ? g.shop.name + ' in ' + g.shop.town : 'a weapon shop'; }
   // how to get the piece a plan entry names, in a few words
   function gearHow(e) {
     var t = '';
@@ -129,17 +129,44 @@
           : e.baseWhere === 'in your bag' ? 'the ' + e.base + ' in your bag' : 'the ' + e.base + ' (' + e.baseWhere + ')';
       t = 'upgrade ' + base + ' at an orbal factory · ' + matsText(e.mats);
     } else if (e.how === 'buy') t = 'buy it at ' + shopOf(e.name) + ' · ' + mira(e.price);
-    else if (e.how === 'buycraft') t = 'buy ' + e.base + (gear(e.base) && gear(e.base).at ? ' at ' + gear(e.base).at : '') + ' (' + mira(e.price) + '), then upgrade it at an orbal factory · ' + matsText(e.mats);
+    else if (e.how === 'buycraft') {
+      var bg = gear(e.base) || {};
+      // a shop's standing stock: the tables do not say whether that town can be reached right now
+      t = 'buy ' + e.base + (bg.at || bg.shop ? ' at ' + shopOf(e.base) : '') + ' (' + mira(e.price) + ')' + (bg.shop && !bg.at ? ' next time you are there' : '') +
+        ', then upgrade it at an orbal factory · ' + matsText(e.mats);
+    }
     if (e.make) t += ' (' + e.make.map(function (x) { return x[0] + ' ×' + x[1] + ' is made from ' + x[2] + ' ×' + x[3]; }).join('; ') + ')';
     if (e.short) t += ' — short by ' + matsText(e.short);
     return t;
+  }
+
+  // Pays for an upgrade out of the materials in `pool`, refining what is missing where the bag
+  // allows it. Returns what is left, what had to be refined, and what is still missing; nothing
+  // is taken when something is missing.
+  function payMats(pool, need) {
+    var left = JSON.parse(JSON.stringify(pool)), make = [], refine = G.refine || {};
+    need.forEach(function (x) {
+      var lack = x[1] - (left[x[0]] || 0), r = refine[x[0]];
+      if (lack > 0 && r && (left[r[0]] || 0) >= lack * r[1]) { // refine what is missing
+        left[r[0]] -= lack * r[1]; left[x[0]] = (left[x[0]] || 0) + lack;
+        make.push([x[0], lack, r[0], lack * r[1]]);
+      }
+    });
+    var short = need.filter(function (x) { return (left[x[0]] || 0) < x[1]; }).map(function (x) { return [x[0], x[1] - (left[x[0]] || 0)]; });
+    if (short.length) return { pool: pool, make: [], short: short };
+    need.forEach(function (x) { left[x[0]] -= x[1]; });
+    return { pool: left, make: make, short: [] };
+  }
+  // notes on the plan what an upgrade took out of the bag
+  function spent(m, before, after) {
+    Object.keys(m.matsHave).forEach(function (n) { if ((after[n] || 0) < (before[n] || 0)) m.matsUsed[n] = (m.matsUsed[n] || 0) + before[n] - (after[n] || 0); });
   }
 
   // Who should wear what. Ranks every piece each character could use, gives each piece to
   // whoever gets the most out of it, and works out how to get there: equip a spare, upgrade
   // something you own, or buy. Reserve characters only get what is lying around.
   function planGear(m, isActive) {
-    m.gear = {}; m.gearWait = []; m.gearOptional = []; m.gearLater = []; m.matsUsed = {}; m.matsHave = {};
+    m.gear = {}; m.gearWait = []; m.gearOptional = []; m.gearLater = []; m.matsUsed = {}; m.matsHave = {}; m.matsLeft = {};
     m.gearStale = !!live && !live.bag.gear; // an older live server is still running: it does not report spare gear
     if (!G.gear || m.gearStale) return;
     var order = (CH.gearOrder || []).concat(CH.characters.map(function (c) { return c.id; }));
@@ -150,6 +177,10 @@
     if (live) {
       (live.bag.gear || []).forEach(function (x) { bag[x.name] = x.count; free[x.name] = (free[x.name] || 0) + x.count; });
       (live.bag.materials || []).forEach(function (x) { mats[x.name] = x.count; });
+      // a few upgrades are paid for in accessories: the spare ones count as materials for those
+      var paidIn = {};
+      Object.keys(G.gear).forEach(function (n) { (G.gear[n].from ? G.gear[n].from[1] : []).forEach(function (x) { if (G.accessories[x[0]]) paidIn[x[0]] = true; }); });
+      (live.bag.accessories || []).forEach(function (x) { if (paidIn[x.name]) mats[x.name] = x.count; });
       Object.keys(live.characters).forEach(function (id) {
         var lc = live.characters[id];
         if (isActive(id) && !m.alloc[id]) return; // in the party without notes: their gear is theirs
@@ -320,20 +351,262 @@
         return;
       }
       if (!live) return;
-      var pool = JSON.parse(JSON.stringify(mats)), make = [];
-      e.mats.forEach(function (x) {
-        var lack = x[1] - (pool[x[0]] || 0), r = refine[x[0]];
-        if (lack > 0 && r && (pool[r[0]] || 0) >= lack * r[1]) { // refine what is missing
-          pool[r[0]] -= lack * r[1]; pool[x[0]] = (pool[x[0]] || 0) + lack;
-          make.push([x[0], lack, r[0], lack * r[1]]);
-        }
+      var paid = payMats(mats, e.mats);
+      if (paid.short.length) { e.short = paid.short; m.gearWait.push(e); return; }
+      if (paid.make.length) e.make = paid.make;
+      spent(m, mats, paid.pool);
+      mats = paid.pool;
+    });
+    m.matsLeft = mats;
+
+    // A few pieces are made from something a shop has stocked since it opened. Whether that
+    // shop is at hand right now is not something the tables say, so such a piece is never part
+    // of the plan: where it beats what the plan leaves someone with, it is offered beside it.
+    var farPool = mats; // so that two offers do not count the same spares
+    order.filter(isActive).forEach(function (id) {
+      var stat = buildOf(id).stat;
+      GEAR_SLOTS.forEach(function (sl) {
+        var e = m.gear[id][sl.key];
+        var better = candidates(id, sl, e.has).filter(function (p) {
+          var g = G.gear[p.n], bg = g.from && G.gear[g.from[0]];
+          return bg && bg.shop && bg.shop.ch <= chapterN && isOpen(g.up) && !(owned[p.n] > 0) && !(owned[g.from[0]] > 0) && p.v > gearScore(e.name, stat);
+        })[0];
+        if (!better) return;
+        var g = G.gear[better.n];
+        var o = { how: 'buycraft', base: g.from[0], mats: g.from[1], price: G.gear[g.from[0]].p };
+        if (live) { var fp = payMats(farPool, o.mats); farPool = fp.pool; if (fp.short.length) o.short = fp.short; }
+        e.far = { id: id, who: e.who, label: sl.label, has: e.name, name: better.n, text: gearHow(o), gain: gearGain(better.n, e.name), far: true };
+        m.gearOptional.push(e.far);
       });
-      var short = e.mats.filter(function (x) { return (pool[x[0]] || 0) < x[1]; }).map(function (x) { return [x[0], x[1] - (pool[x[0]] || 0)]; });
-      if (short.length) { e.short = short; m.gearWait.push(e); return; }
-      e.mats.forEach(function (x) { pool[x[0]] -= x[1]; });
-      if (make.length) e.make = make;
-      Object.keys(m.matsHave).forEach(function (n) { if (pool[n] < mats[n]) m.matsUsed[n] = (m.matsUsed[n] || 0) + mats[n] - pool[n]; });
-      mats = pool;
+    });
+  }
+
+  // ---- accessories, from the game's own tables ----
+  function accOf(name) { var a = G.accessories && name ? G.accessories[name] : null; return a && a[5] ? a : null; }
+  // What an accessory is worth to a build. The attack stat they use counts in full and the
+  // other hardly; defences count half, because unlike armour an accessory is a choice between
+  // hitting harder and holding out. A build the notes mark as the party's wall (`wear: 'guard'`)
+  // values defences and HP double; one marked as a damage dealer (`wear: 'power'`) values its
+  // attack stat half as much again. SPD is eight a point, as for gear. A status it blocks
+  // outright adds about as much as two points of SPD.
+  function accWeights(b) {
+    var str = b.stat !== 'ats', power = b.wear === 'power', guard = b.wear === 'guard', mine = power ? 1.5 : 1;
+    return {
+      STR: str ? mine : 0.1, ATS: str ? 0.1 : mine, DEF: guard ? 1 : 0.5, ADF: guard ? 1 : 0.5, HP: guard ? 0.08 : 0.04, EP: str ? 0.05 : 0.2,
+      SPD: 8, MOV: 1, EVA: guard ? 3 : 2, AEV: guard ? 3 : 2, CRT: str ? 3 : 0.5, ACC: str ? 0.3 : 0
+    };
+  }
+  function accScore(name, b) {
+    var a = accOf(name);
+    if (!a) return 0;
+    var w = accWeights(b), d = a[5], sum = 0;
+    Object.keys(d.s).forEach(function (k) { sum += d.s[k] * (w[k] || 0); });
+    if (d.fx.cp) sum += d.fx.cp * 2;    // CP gain rate, per percent
+    if (d.fx.act) sum += d.fx.act * 4;  // CP on every action
+    if (d.fx.ko) sum += d.fx.ko * 0.3;  // saves from one KO, then it is gone
+    Object.keys(a[1]).forEach(function (st) { sum += a[1][st] * 0.15 * (st === 'Status Ailments' ? 8 : 1); });
+    return Math.round(sum);
+  }
+  // what changes when accessory `to` replaces `from`: the stats, then what it newly blocks
+  function accGain(to, from) {
+    var a = accOf(to), b = accOf(from);
+    if (!a) return '';
+    var bits = GEAR_STATS.map(function (k) {
+      var d = (a[5].s[k] || 0) - ((b && b[5].s[k]) || 0);
+      return d ? signed(k, d) : '';
+    }).filter(Boolean);
+    var gains = Object.keys(a[1]).filter(function (st) { return a[1][st] > ((b && b[1][st]) || 0); });
+    var loses = b ? Object.keys(b[1]).filter(function (st) { return b[1][st] > (a[1][st] || 0); }) : [];
+    if (gains.length) bits.push('blocks ' + gains.join(', '));
+    if (loses.length) bits.push('no longer blocks ' + loses.join(', '));
+    return bits.join(', ');
+  }
+  // how to get the accessory a plan entry names, in a few words
+  function accHow(e) {
+    var t = '', many = e.count > 1;
+    var baseText = function () {
+      if (many) return e.base + ' ×' + e.count;
+      if (!live) return e.base + (chestText(e.base) ? ' (' + chestText(e.base) + ')' : '');
+      return e.baseWhere === 'worn' ? 'the ' + e.base + ' worn now' : e.baseWhere === 'in your bag' ? 'the ' + e.base + ' in your bag' : 'the ' + e.base + ' (' + (e.baseWhere || 'in your bag') + ')';
+    };
+    var cost = function () { return e.mats && e.mats.length ? ' · ' + matsText(e.mats) : ''; };
+    if (e.how === 'own') t = e.where;
+    else if (e.how === 'find') t = chestText(e.name);
+    else if (e.how === 'craft') t = (many ? 'made from ' + baseText() : 'upgrade ' + baseText()) + ' at an orbal factory' + cost();
+    else if (e.how === 'buy') t = 'buy it at a shop that sells accessories · ' + mira(e.price);
+    else if (e.how === 'buycraft') t = 'buy ' + e.base + (many ? ' ×' + e.count : '') + ' at a shop that sells accessories (' + mira(e.price) + '), then upgrade it at an orbal factory' + cost();
+    if (e.make && e.make.length) t += ' (' + e.make.map(function (x) { return x[0] + ' ×' + x[1] + ' is made from ' + x[2] + ' ×' + x[3]; }).join('; ') + ')';
+    if (e.short) t += ' — short by ' + matsText(e.short);
+    return t;
+  }
+
+  // Which two accessories each fielded member should wear, out of everything you own and what
+  // an orbal factory can make of it right now. Every (member, accessory) pair is ranked by what
+  // the accessory is worth to that member, and the best pairs are served first, so a one-off
+  // goes to whoever gets the most out of it. What someone already wears counts for a little
+  // more, so that nothing is swapped around for a gain too small to feel.
+  //   m.acc[id] = [entry, entry]   entry: { name, how, has: what it replaces, where, base, mats, gain }
+  // Steps are only made of what costs nothing or materials you hold. An accessory that would
+  // have to be bought is offered as an option (the save's mira is not read), and one you are
+  // short of materials for waits, the same way gear does. With no save to go by, the two best
+  // the chapter can give are shown with how to get them.
+  var ACC_KEEP = 20;
+  function planAccessories(m, isActive) {
+    m.acc = {}; m.accMore = {};
+    if (m.gearStale) return;
+    var first = G.accessories && G.accessories[Object.keys(G.accessories)[0]];
+    if (!first || !first[5]) return; // game data from before accessories were ranked
+    if (live && !live.bag.accessories) return;
+    var order = (CH.gearOrder || []).concat(CH.characters.map(function (c) { return c.id; }));
+    // with a save, only the four you field; without one, every build of the chapter, the party first
+    order = order.filter(function (id, i) { return order.indexOf(id) === i && m.alloc[id] && (isActive(id) || !live); });
+    order = order.filter(isActive).concat(order.filter(function (id) { return !isActive(id); }));
+    var inScope = function (d) { return d.ch != null && d.ch <= chapterN; };
+
+    var free = {}, bag = {}, holders = [], mats = m.matsLeft || {};
+    if (live) {
+      live.bag.accessories.forEach(function (x) {
+        var n = x.count - (m.matsUsed[x.name] || 0); // some went into a gear upgrade above
+        if (n > 0) { bag[x.name] = n; free[x.name] = (free[x.name] || 0) + n; }
+      });
+      Object.keys(live.characters).forEach(function (id) {
+        var lc = live.characters[id];
+        if (isActive(id) && !m.alloc[id]) return; // in the party without notes: theirs to keep
+        (lc.accessories || []).forEach(function (a) {
+          if (!a) return;
+          free[a] = (free[a] || 0) + 1;
+          holders.push({ name: a, id: id, who: lc.name, bench: !isActive(id) });
+        });
+      });
+    } else {
+      // no save to go by: take every chest of the chapters so far as opened
+      Object.keys(G.accessories).forEach(function (n) { var d = G.accessories[n][5]; if (d.n && inScope(d)) free[n] = d.n; });
+    }
+    var owned = JSON.parse(JSON.stringify(free));
+
+    function claim(name, id) {
+      free[name]--;
+      if (!live) return '';
+      var i, pick = -1;
+      for (i = 0; i < holders.length; i++) if (holders[i].name === name && holders[i].id === id) { holders.splice(i, 1); return 'worn'; }
+      if (bag[name] > 0) { bag[name]--; return 'in your bag'; }
+      for (i = 0; i < holders.length && pick === -1; i++) if (holders[i].name === name && holders[i].bench) pick = i;
+      for (i = holders.length - 1; i >= 0 && pick === -1; i--) if (holders[i].name === name) pick = i;
+      if (pick === -1) return 'in your bag';
+      return 'take it from ' + holders.splice(pick, 1)[0].who;
+    }
+    // where a copy is, in the words claim() would use, without taking it
+    function locate(name, id) {
+      if (!live) return '';
+      var mine = holders.filter(function (h) { return h.name === name && h.id === id; })[0];
+      if (mine) return 'worn';
+      if (bag[name] > 0) return 'in your bag';
+      var h = holders.filter(function (x) { return x.name === name && x.bench; })[0] || holders.filter(function (x) { return x.name === name; }).pop();
+      return h ? 'take it from ' + h.who : 'in your bag';
+    }
+    // how `n` could be had for `id` right now; null when it cannot
+    function reach(n, id) {
+      var a = accOf(n), d = a[5];
+      if (free[n] > 0) return { how: 'have' };
+      if (a[3] && isOpen(a[4])) {
+        var base = a[3][0], count = a[3][2] || 1, bd = accOf(base), got = free[base] || 0;
+        if (got >= count) return { how: 'craft', base: base, count: count, mats: a[3][1] };
+        if (bd && isOpen(bd[5].sell)) return { how: 'buycraft', base: base, count: count, mats: a[3][1], price: bd[5].p * (count - got) };
+        // some of what it takes is in the bag already: worth knowing how many are missing
+        if (got > 0 && count > 1) return { how: 'craft', base: base, count: count, mats: a[3][1], short: [[base, count - got]] };
+      }
+      if (isOpen(d.sell)) return { how: 'buy', price: d.p };
+      return null;
+    }
+
+    var wornBy = {}, picks = {}, offer = {}, wait = {}, told = {};
+    order.forEach(function (id) {
+      picks[id] = [];
+      wornBy[id] = live ? (live.characters[id].accessories || []).slice(0, 2) : [];
+      while (wornBy[id].length < 2) wornBy[id].push(null);
+    });
+    var pairs = [];
+    order.forEach(function (id, rank) {
+      var b = buildOf(id);
+      Object.keys(G.accessories).forEach(function (n) {
+        var a = accOf(n);
+        if (!a || !(owned[n] > 0 || inScope(a[5]))) return;
+        var raw = accScore(n, b), worn = wornBy[id].indexOf(n) !== -1;
+        if (raw > 0) pairs.push({ id: id, n: n, raw: raw, v: raw + (worn ? ACC_KEEP : 0), rank: rank });
+      });
+    });
+    pairs.sort(function (p, q) { return q.v - p.v || p.rank - q.rank || p.n.localeCompare(q.n); });
+    pairs.forEach(function (p) {
+      var mine = picks[p.id];
+      if (mine.length >= 2 || mine.some(function (e) { return e.name === p.n; })) return;
+      var r = reach(p.n, p.id);
+      if (!r) return;
+      r.name = p.n; r.raw = p.raw;
+      if (r.how === 'have') {
+        var where = claim(p.n, p.id);
+        r.how = where === 'worn' ? 'ok' : live ? 'own' : 'find';
+        r.where = where;
+        mine.push(r);
+        return;
+      }
+      if (!live) { // nothing is owned: the way to get it is the advice
+        if (r.short) return;
+        if (r.how === 'craft') for (var k = 0; k < r.count; k++) claim(r.base, p.id);
+        mine.push(r);
+        return;
+      }
+      // told once, to whoever gets the most out of it: the same thing is not offered to all four
+      if (r.how === 'buy' || r.how === 'buycraft') {
+        if (offer[p.id] || told[p.n]) return;
+        if (r.mats && r.mats.length) { var need = payMats(mats, r.mats); if (need.short.length) r.short = need.short; }
+        offer[p.id] = r; told[p.n] = true;
+        return;
+      }
+      if (r.short) r.baseWhere = locate(r.base, p.id);
+      if (!r.short) {
+        var paid = payMats(mats, r.mats);
+        if (paid.short.length) { r.short = paid.short; r.baseWhere = locate(r.base, p.id); }
+        else {
+          if (paid.make.length) r.make = paid.make;
+          spent(m, mats, paid.pool);
+          mats = paid.pool;
+          for (var j = 0; j < r.count; j++) r.baseWhere = claim(r.base, p.id);
+          mine.push(r);
+          return;
+        }
+      }
+      if (!wait[p.id] && !told[p.n]) { wait[p.id] = r; told[p.n] = true; }
+    });
+    m.matsLeft = mats;
+
+    order.forEach(function (id) {
+      var b = buildOf(id), mine = picks[id], worn = wornBy[id];
+      // nothing better to be had for a slot: what is worn there stays
+      worn.forEach(function (a) {
+        if (a && mine.length < 2 && !mine.some(function (e) { return e.name === a; })) mine.push({ name: a, how: 'keep', raw: accScore(a, b) });
+      });
+      // which worn accessory each new one takes the place of: an empty slot first
+      var out = worn.filter(function (a) { return !mine.some(function (e) { return e.name === a; }); })
+        .sort(function (p, q) { return (p ? 1 : 0) - (q ? 1 : 0); });
+      mine.forEach(function (e) {
+        e.id = id; e.who = b.name; e.label = 'Accessory';
+        var stays = e.how === 'ok' || e.how === 'keep';
+        e.has = stays ? e.name : (out.length ? out.shift() : null);
+        e.gain = stays ? '' : accGain(e.name, e.has);
+        e.text = stays ? '' : accHow(e);
+      });
+      m.acc[id] = mine;
+      m.accMore[id] = {};
+      // an option or a wait is only worth a line when it beats what the plan leaves them with
+      var low = mine.slice().sort(function (p, q) { return p.raw - q.raw; })[0];
+      [[offer[id], m.gearOptional], [wait[id], m.gearWait]].forEach(function (x) {
+        var e = x[0];
+        if (!e || (mine.length >= 2 && e.raw < low.raw + ACC_KEEP)) return;
+        var has = mine.length >= 2 ? low.name : null;
+        x[1].push({ id: id, who: b.name, label: 'Accessory', acc: true, has: has, name: e.name, text: accHow(e), gain: accGain(e.name, has) });
+        e.text = accHow(e); e.over = has; e.gain = accGain(e.name, has);
+        m.accMore[id][x[1] === m.gearOptional ? 'option' : 'wait'] = e;
+      });
     });
   }
 
@@ -526,6 +799,7 @@
     });
 
     planGear(m, isActive);
+    planAccessories(m, isActive);
     // chest finds the party is still waiting for join the upgrade list
     var gearRow = {};
     m.gearLater.forEach(function (x) {
@@ -647,14 +921,6 @@
       if (m.awayHolds[name]) return 'none spare — ' + m.awayHolds[name] + ' has one, and is away for now';
       return 'none spare' + (src ? ' — ' + src.where : ' — synthesize or buy one');
     }
-    var wornBy = {}; // accessory name -> bench characters wearing it
-    Object.keys(live.characters).forEach(function (id) {
-      if (isActive(id)) return;
-      live.characters[id].accessories.forEach(function (a) { if (a) (wornBy[a] = wornBy[a] || []).push(live.characters[id].name); });
-    });
-    var bagAcc = {};
-    live.bag.accessories.forEach(function (x) { bagAcc[x.name] = x.count; });
-
     CH.characters.forEach(function (b) {
       var lc = live.characters[b.id];
       if (!lc || !m.alloc[b.id]) return;
@@ -675,17 +941,9 @@
         if (!e || e.how === 'ok' || e.how === 'keep' || e.short || e.minor) return;
         list.push({ id: b.id, who: b.name, kind: 'gear', pos: sl.label, from: e.has || 'empty', to: e.name, where: gearHow(e), note: e.gain });
       });
-      b.accessories.forEach(function (acc) {
-        if (lc.accessories.indexOf(acc) !== -1) return;
-        var where = '';
-        if (isActive(b.id)) {
-          var made = G.accessories[acc] || [];
-          if (bagAcc[acc] > 0) { bagAcc[acc]--; where = 'in your bag'; }
-          else if (wornBy[acc] && wornBy[acc].length) where = 'take it from ' + wornBy[acc].shift();
-          else if (made[3] && isOpen(made[4]) && bagAcc[made[3][0]] > 0) { bagAcc[made[3][0]]--; where = 'upgrade the ' + made[3][0] + ' in your bag at an orbal factory · ' + matsText(made[3][1]); }
-          else where = 'none spare';
-        }
-        list.push({ id: b.id, who: b.name, kind: 'acc', pos: 'Accessory', from: null, to: acc, where: where });
+      (m.acc[b.id] || []).forEach(function (e) {
+        if (e.how === 'ok' || e.how === 'keep' || !isActive(b.id)) return;
+        list.push({ id: b.id, who: b.name, kind: 'acc', pos: 'Accessory', from: e.has || 'empty', to: e.name, where: e.text, note: e.gain });
       });
       m.alloc[b.id].todo = list;
       if (isActive(b.id)) m.todo = m.todo.concat(list);
@@ -696,6 +954,7 @@
     use: use, compute: compute, buildOf: buildOf, haveKey: haveKey, stageNow: stageNow, lineupNow: lineupNow,
     quartz: quartz, lineValues: lineValues, artsFor: artsFor,
     gear: gear, gearScore: gearScore, gearStats: gearStats, gearGain: gearGain, gearHow: gearHow,
+    accScore: accScore, accGain: accGain,
     reached: reached, isOpen: isOpen, matsText: matsText, sepithText: sepithText, quartzLevel: quartzLevel, synthCost: synthCost, synthWhere: synthWhere, mira: mira, chestText: chestText,
     ELS: ELS, ORDER: ORDER, POS_NAME: POS_NAME, GEAR_SLOTS: GEAR_SLOTS, GEAR_KIND: GEAR_KIND
   };

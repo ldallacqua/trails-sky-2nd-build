@@ -121,7 +121,7 @@ const itemRow = new Map();
 for (const e of itemTable.rows('ItemTableData')) itemRow.set(itemTable.b.readUInt32LE(e), e);
 function itemInfo(id) {
   const b = itemTable.b, o = itemRow.get(id);
-  const stats = [], extra = [], res = {};
+  const stats = [], extra = [], res = {}, worth = {};
   for (const [at, label, unit] of STAT_FIELDS) {
     const v = b.readInt32LE(o + at);
     if (v) stats.push(label + ' ' + (v > 0 ? '+' : '−') + Math.abs(v) + unit);
@@ -133,7 +133,11 @@ function itemInfo(id) {
     const m = /^Resist (.+) \(%d%%\)$/.exec(t);
     if (m) res[m[1]] = v;
     else if (PLAIN.has(fx)) extra.push(t.replace('%d', v).replace(/%%/g, '%').replace(/\.$/, ''));
-    else if (fx === 1076) extra.push('CP gain rate +' + (v - 100) + '%');
+    else if (fx === 1076) { extra.push('CP gain rate +' + (v - 100) + '%'); worth.cp = v - 100; }
+    else if (fx === 1016) { extra.push(t.replace('%d', v)); worth.act = v; }
+    // the Proxy Puppets: the game's own line, and from the item's description, that it is used up
+    else if (fx === 1046) { extra.push(t.replace('%d', v).replace('%d', v2).replace(/%%/g, '%') + ' (the doll breaks)'); worth.ko = v; }
+    else if (fx === 1121) extra.push(t);
     else if (fx === 1065 || fx === 1066) extra.push(t.replace('%d', v2));
     else if (fx === 1024) extra.push('EP cost ×' + (100 - v) / 100);
     else if (fx === 1021) extra.push('Arts casting time ×' + v / 100);
@@ -146,7 +150,7 @@ function itemInfo(id) {
     extra[k] = extra[k].replace(/([A-Za-z])([+-])(?=\d)/g, '$1 $2').replace(/ -(?=\d)/g, ' −')
       .replace(/ UP when critical health/, ' up at critical HP').replace(/ when critical health/, ' at critical HP');
   }
-  return { stats, extra, res, desc: clean(itemTable.str(b.readUInt32LE(o + 0xe8))) };
+  return { stats, extra, res, worth, desc: clean(itemTable.str(b.readUInt32LE(o + 0xe8))) };
 }
 const kindOf = (id) => itemTable.b[itemRow.get(id) + 0x28] + '/' + itemTable.b[itemRow.get(id) + 0x29];
 
@@ -173,6 +177,24 @@ function ownShopWindow(id) {
     return { win: [gate(r.from), gate(r.until)], where: s.name };
   }
   return null;
+}
+// A shop's own stock that has been there since the shop opened. The table does not say which
+// town a shop is in or when you first get there, so only the shops named here count: the town
+// is from the guides' item lists (Kamigame, Silver Intention), the chapter is the one whose
+// region it is. Nothing else on an ungated list is offered, so no later shop is named early.
+const KNOWN_SHOPS = { 46: { town: 'Ruan', ch: 1 }, 62: { town: 'Zeiss', ch: 2 } };
+function knownShop(id) {
+  for (const r of shop.own) {
+    const s = shop.shops.get(r.list), k = KNOWN_SHOPS[r.list];
+    if (r.item === id && s && k && s.type <= 3 && !r.from.length) return { name: s.name, town: k.town, ch: k.ch };
+  }
+  return null;
+}
+// what something is made from at an orbal factory: [base, [[material, count]], how many of the base]
+function recipeAny(id) {
+  const r = shop.recipes.get(id);
+  if (!r || !game.items.get(r.base)) return null;
+  return [game.items.get(r.base), r.mats.map(([m, n]) => [game.items.get(m), n]), r.count];
 }
 function recipeOf(id) {
   const r = shop.recipes.get(id);
@@ -244,6 +266,7 @@ for (const [id, name] of game.items) {
   const sell = shopWindow(k === 'w' ? 1006 : 1007, id) || (own && own.win), up = shopWindow(1002, id), from = recipeOf(id);
   if (sell) g.sell = sell;
   if (sell && own && sell === own.win) g.at = own.where; // sold at this one shop only
+  if (!sell && knownShop(id)) g.shop = knownShop(id);    // a shop's standing stock: no telling from the tables whether it is at hand
   if (up && from) { g.up = up; g.from = from; }
   if (chestsOf.has(id)) { g.n = chestsOf.get(id).length; gearChests[name] = chestsOf.get(id)[0]; }
   allGear[name] = g;
@@ -257,6 +280,36 @@ for (const g of Object.values(allGear)) {
 for (const g of Object.values(allGear)) {
   const base = g.from && allGear[g.from[0]];
   if (base && base.ch == null && g.ch != null) base.ch = g.ch;
+}
+
+// every accessory: name -> [stats and effects, { status: % resisted }, cell on the game's icon sheet,
+//   what it is made from ([base, materials, how many of the base]) or null, when that opens or null,
+//   { s: stats, fx: other effects as numbers, p: price, sell: when shops stock it, n: chests, ch: chapter it turns up in }]
+const allAccessories = {};
+const accChests = {}; // name -> { where, tag }, kept per chapter like the gear chests
+for (const [id, name] of game.items) {
+  if (!name || !itemRow.has(id) || kindOf(id) !== '14/11' || allAccessories[name]) continue;
+  const info = itemInfo(id);
+  const up = shopWindow(1002, id), from = recipeAny(id);
+  const s = {};
+  for (const [at, label] of STAT_FIELDS) { const v = itemTable.b.readInt32LE(itemRow.get(id) + at); if (v) s[STAT_KEYS[label] || label] = v; }
+  const d = { s, fx: info.worth, p: itemTable.b.readUInt32LE(itemRow.get(id) + 0xd0) };
+  const sell = shopWindow(1008, id) || shopWindow(1011, id);
+  if (sell) d.sell = sell;
+  if (chestsOf.has(id)) { d.n = chestsOf.get(id).length; accChests[name] = chestsOf.get(id)[0]; }
+  // an upgraded accessory also says what it is made from, and when that opens
+  allAccessories[name] = [info.stats.concat(info.extra).join(', '), info.res, game.icons.get(id), up && from ? from : null, up && from ? up : null, d];
+}
+// The chapter an accessory first turns up in, worked out like the gear's: when shops stock it
+// or when its upgrade opens, whichever is first; a chest find takes the chapter of what is made
+// from it when that is earlier (the factory offers the upgrade before shops stock the piece).
+for (const a of Object.values(allAccessories)) {
+  const opens = [a[5].sell ? a[5].sell[0] : null, a[4] ? a[4][0] : null].filter((x) => x != null);
+  if (opens.length) a[5].ch = Math.max(0, chapterOf(Math.min(...opens)));
+}
+for (const a of Object.values(allAccessories)) {
+  const base = a[3] && allAccessories[a[3][0]];
+  if (base && base[5].n && a[5].ch != null && (base[5].ch == null || base[5].ch > a[5].ch)) base[5].ch = a[5].ch;
 }
 
 // ---- chapters ----------------------------------------------------------------
@@ -301,10 +354,13 @@ function buildChapter(src) {
         families.set(familyOf(tq), t);
       }
     }
-    for (const a of c.accessories || []) if (!idByName.has(a)) problems.push(where + ': accessory "' + a + '" is not in the game table');
+    if (c.accessories) problems.push(where + ': accessories are no longer written in the notes; the page picks them from the save');
     // Which attack stat their gear should feed. Said in the notes, or read off the build:
     // someone slotted for Arts (Mind or Cast) wants ATS, everyone else STR.
     if (c.stat && c.stat !== 'str' && c.stat !== 'ats') problems.push(where + ': stat must be "str" or "ats"');
+    // What their two accessories should lean towards: holding out (the party's wall), hitting
+    // harder (a damage dealer), or neither in particular. The page picks the accessories itself.
+    if (c.wear && c.wear !== 'guard' && c.wear !== 'power') problems.push(where + ': wear must be "guard" or "power"');
     const forArts = (n) => /^(Mind|Cast) \d$/.test(n || '');
     const caster = Object.values(slots).some((s) => forArts(s.t) || forArts(s.u));
     return {
@@ -312,7 +368,7 @@ function buildChapter(src) {
       // No table states it, but the model files of the women are numbered from 5000 and the men's are not.
       sex: /^chr5/.test(game.people.get(cid).model) ? 'f' : 'm',
       lines: lay.lines, locks: lay.locks, slots,
-      accessories: c.accessories || [], notes: c.notes || []
+      wear: c.wear || '', notes: c.notes || []
     };
   }).filter(Boolean);
   for (const id of src.gearOrder || []) {
@@ -322,6 +378,10 @@ function buildChapter(src) {
   const gearSrc = {};
   for (const name of Object.keys(gearChests)) {
     if (allGear[name].ch != null && allGear[name].ch <= src.n && gearChests[name].where) gearSrc[name] = gearChests[name];
+  }
+  for (const name of Object.keys(accChests)) {
+    const d = allAccessories[name][5];
+    if (d.ch != null && d.ch <= src.n && accChests[name].where) gearSrc[name] = accChests[name];
   }
   for (const name of Object.keys(src.sources || {})) use(name, 'ch' + src.n + ' sources');
   for (const id of (src.party && src.party.pick) || []) {
@@ -427,20 +487,12 @@ for (const [id, v] of quartzValues) {
   allQuartz[name] = [colourOf(id), ELEMENTS.map((e) => v[e] || 0), FX[name] || info.stats.concat(info.extra).join(', '), info.res,
     mk.level, mk.cost, mk.cost ? shopWindow(1000, id) : null];
 }
-// every accessory: name -> [stats and effects, { status: % resisted }, cell on the game's icon sheet]
-const allAccessories = {};
 // healing and support items: name -> the game's description
 const supplies = {};
 for (const [id, name] of game.items) {
   if (!name || !itemRow.has(id)) continue;
   const kind = kindOf(id);
-  if (kind === '14/11' && !allAccessories[name]) {
-    const info = itemInfo(id);
-    allAccessories[name] = [info.stats.concat(info.extra).join(', '), info.res, game.icons.get(id)];
-    // an upgraded accessory also says what it is made from, and when that opens
-    const up = shopWindow(1002, id), from = recipeOf(id);
-    if (up && from) allAccessories[name].push(from, up);
-  } else if ((kind === '1/1' || kind === '1/2') && !supplies[name]) supplies[name] = itemInfo(id).desc;
+  if ((kind === '1/1' || kind === '1/2') && !supplies[name]) supplies[name] = itemInfo(id).desc;
 }
 
 fs.mkdirSync(OUT, { recursive: true });

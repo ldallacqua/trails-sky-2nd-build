@@ -1,6 +1,6 @@
 // Page settings. The build itself lives in chapters/ (see tools/build.js and the README).
 window.BUILD = {
-  version: 'v28',
+  version: 'v29',
   updated: '2026-10-06',
   // Chapter shown when the page cannot see a save (the published copy).
   baseChapter: 4,

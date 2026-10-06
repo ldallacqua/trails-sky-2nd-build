@@ -313,7 +313,12 @@
     var res = resistText(g[1]);
     if (res) tipLine(box, 'tip-fx', 'Resists ' + res);
     if (!g[0] && !res) tipLine(box, 'tip-meta', 'No stats on record.');
-    if (g[3]) tipLine(box, 'tip-meta', 'Upgraded from ' + g[3][0] + ' at an orbal factory: ' + matsText(g[3][1]));
+    if (g[3]) tipLine(box, 'tip-meta', (g[3][2] > 1 ? 'Made from ' + g[3][0] + ' ×' + g[3][2] : 'Upgraded from ' + g[3][0]) + ' at an orbal factory' + (g[3][1].length ? ': ' + matsText(g[3][1]) : ''));
+    // what an orbal factory makes of it at this point of the story
+    Object.keys(G.accessories).forEach(function (n) {
+      var u = G.accessories[n];
+      if (u[3] && u[3][0] === name && isOpen(u[4])) tipLine(box, 'tip-meta', 'An orbal factory makes ' + n + ' of ' + (u[3][2] > 1 ? u[3][2] + ' of these' : 'it') + (u[3][1].length ? ': ' + matsText(u[3][1]) : '') + (u[0] ? ' (' + u[0] + ')' : ''));
+    });
     return tipLine(box, 'tip-meta', ownedText(name, 'accessory'));
   }
   function tipGear(name) {
@@ -585,24 +590,48 @@
         li.appendChild(el('span', 'acc-how', (e.has ? 'has ' + e.has + ' · ' : '') + gearHow(e)));
         if (e.gain) li.appendChild(el('span', 'acc-how acc-gain', e.gain));
       } else if (e && !lc && gearHow(e)) li.appendChild(el('span', 'acc-how', gearHow(e)));
-      if (e && e.option) li.appendChild(el('span', 'acc-how acc-later', 'optional: ' + e.option.name + ' — ' + e.option.text + (e.option.gain ? ' (' + e.option.gain + ')' : '')));
+      [e && e.option, e && e.far].forEach(function (o) {
+        if (o) li.appendChild(el('span', 'acc-how acc-later', 'optional: ' + o.name + ' — ' + o.text + (o.gain ? ' (' + o.gain + ')' : '')));
+      });
       if (e && e.later) li.appendChild(el('span', 'acc-how acc-later', 'later: ' + e.later.name + (e.later.where ? ' — ' + e.later.where : '')));
       ul.appendChild(li);
     });
-    var want = b ? b.accessories : [];
-    want.forEach(function (a) {
-      var on = lc && lc.accessories.indexOf(a) !== -1;
-      var li = el('li', 'row acc-row' + (lc ? (on ? ' is-on' : ' is-missing') : ''));
-      add(li, named('Accessory', a), el('span', 'acc-fx', accessoryText(a)));
-      if (lc) li.appendChild(el('span', 'acc-state', on ? '✓' : 'not worn'));
-      ul.appendChild(li);
-    });
-    if (lc) lc.accessories.forEach(function (a) {
-      if (!a || want.indexOf(a) !== -1) return;
-      var li = el('li', 'row acc-row is-other');
-      add(li, named('Accessory', a), el('span', 'acc-fx', accessoryText(a)), el('span', 'acc-state', want.length ? 'worn instead' : 'worn'));
-      ul.appendChild(li);
-    });
+    // The two accessories: the pair the plan picks out of what you own. For someone the plan
+    // does not cover (the bench, with a save), what they wear.
+    var picks = m.acc && m.acc[id], more = (m.accMore && m.accMore[id]) || {};
+    var extra = function (li, tag, o) {
+      if (o) li.appendChild(el('span', 'acc-how acc-later', tag + ': ' + o.name + ' — ' + o.text + (o.gain ? ' (' + o.gain + ')' : '')));
+    };
+    if (picks) {
+      picks.forEach(function (e, i) {
+        var change = e.how !== 'ok' && e.how !== 'keep';
+        var li = el('li', 'row acc-row' + (!lc ? '' : change ? ' is-missing' : ' is-on'));
+        add(li, named('Accessory', e.name), el('span', 'acc-fx', accessoryText(e.name)));
+        if (lc) li.appendChild(el('span', 'acc-state', change ? 'change' : '✓'));
+        if (change && lc) {
+          li.appendChild(el('span', 'acc-how', (e.has ? 'has ' + e.has + ' · ' : '') + e.text));
+          if (e.gain) li.appendChild(el('span', 'acc-how acc-gain', e.gain));
+        } else if (!lc && e.text) li.appendChild(el('span', 'acc-how', e.text));
+        // what could take this one's place: beside the accessory it would replace, or the last row
+        var here = function (o) { return o && (o.over ? o.over === e.name : i === picks.length - 1); };
+        if (here(more.wait)) extra(li, 'when you have the materials', more.wait);
+        if (here(more.option)) extra(li, 'optional', more.option);
+        ul.appendChild(li);
+      });
+      for (var k = picks.length; k < 2; k++) {
+        var none = el('li', 'row acc-row');
+        add(none, named('Accessory', null), el('span', 'acc-fx', ''));
+        if (!picks.length && k === 1) { extra(none, 'when you have the materials', more.wait); extra(none, 'optional', more.option); }
+        ul.appendChild(none);
+      }
+    } else if (lc) {
+      lc.accessories.forEach(function (a) {
+        var li = el('li', 'row acc-row is-other');
+        add(li, named('Accessory', a), el('span', 'acc-fx', a ? accessoryText(a) : ''));
+        if (a) li.appendChild(el('span', 'acc-state', 'worn'));
+        ul.appendChild(li);
+      });
+    }
     acc.appendChild(ul);
     add(body, side, acc);
     card.appendChild(body);
@@ -633,7 +662,7 @@
       ORDER.forEach(function (k) { nameAt[k] = lc ? lc.slots[k] : m.alloc[id][k].name; });
       return {
         id: id, name: b ? b.name : lc.name, lc: lc, lines: lc ? lc.lines : b.lines, nameAt: nameAt,
-        accessories: lc ? lc.accessories.filter(Boolean) : b.accessories
+        accessories: lc ? lc.accessories.filter(Boolean) : (m.acc && m.acc[id] ? m.acc[id].map(function (e) { return e.name; }) : [])
       };
     }).filter(Boolean);
   }
@@ -880,10 +909,16 @@
     });
     byId('ref-quartz-n').textContent = String(qnames.length);
 
-    // accessories: in the builds shown, worn, or spare in the bag
+    // accessories: what the plan names (and what it is made from), worn, or spare in the bag
     var aw = {};
     var anote = function (name, text) { if (name) (aw[name] = aw[name] || []).push(text); };
-    shown.forEach(function (c) { c.accessories.forEach(function (a) { if (live) aw[a] = aw[a] || []; else anote(a, c.name); }); });
+    shown.forEach(function (c) {
+      var more = (m.accMore && m.accMore[c.id]) || {};
+      ((m.acc && m.acc[c.id]) || []).concat([more.option, more.wait].filter(Boolean)).forEach(function (e) {
+        if (!live && e.how) anote(e.name, c.name);
+        [e.name, e.base].forEach(function (n) { if (n && G.accessories[n]) aw[n] = aw[n] || []; });
+      });
+    });
     people.forEach(function (lc) { lc.accessories.forEach(function (a) { anote(a, lc.name); }); });
     if (live) live.bag.accessories.forEach(function (x) { anote(x.name, 'bag' + (x.count > 1 ? ' ×' + x.count : '')); });
     var at = byId('ref-acc');
@@ -1144,7 +1179,7 @@
     };
     var waiting = function () {
       held('When you have the materials', m.gearWait);
-      held('Optional: small gain for the cost', m.gearOptional);
+      held('Optional: your call', m.gearOptional);
     };
     if (!m.todo.length) {
       host.classList.add('is-done');
