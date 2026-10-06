@@ -187,6 +187,11 @@ function Stage-Line($data, [double]$width) {
   if (-not $data.note) { return $null }
   Note-Line ([string]$data.stage) ([string]$data.note) $width
 }
+# what the sepith in the bag pays for at a workshop: quartz to synthesize, slots to raise
+function Workshop-Line($data, [double]$width) {
+  if (-not $data.workshop) { return $null }
+  Note-Line 'Workshop' ([string]$data.workshop) $width
+}
 # the four in the save are not the four the notes would field here
 function Lineup-Line($data, [double]$width) {
   if (-not $data.lineup) { return $null }
@@ -250,7 +255,7 @@ function New-View($data, [string]$mode) {
   $rule = New-Object Windows.Shapes.Rectangle
   $rule.Height = 1; $rule.Margin = '0,6,0,2'; $rule.Fill = (Gradient '#D6B160' '#00D6B160' 0)
   [void]$root.Children.Add($rule)
-  foreach ($line in @((Stage-Line $data 390), (Lineup-Line $data 390))) {
+  foreach ($line in @((Stage-Line $data 390), (Lineup-Line $data 390), (Workshop-Line $data 390))) {
     if ($line) { $line.Margin = '0,6,0,0'; [void]$root.Children.Add($line) }
   }
 
@@ -318,9 +323,12 @@ function New-View($data, [string]$mode) {
   if ($steps.Count -gt $shown) { $notes += ('{0} more' -f ($steps.Count - $shown)) }
   if ($data.optional -gt 0) { $notes += ('{0} optional' -f $data.optional) }
   if ($data.waiting -gt 0) { $notes += ('{0} waiting for materials' -f $data.waiting) }
-  $foot = 'Ctrl+Alt+O  list / badge / off'
-  if ($notes.Count) { $foot = 'On the page: ' + ($notes -join ', ') + "   $DOT   " + $foot }
-  if ($data.lineupOk) { $foot = "Lineup matches   $DOT   " + $foot }
+  $parts = @()
+  if ($data.lineupOk) { $parts += 'Lineup OK' }
+  if ($notes.Count) { $parts += ('On the page: ' + ($notes -join ', ')) }
+  # the long form of the hotkey hint only when there is room for it on one line
+  if ($parts.Count -ge 2 -or $notes.Count -ge 3) { $parts += 'Ctrl+Alt+O' } else { $parts += 'Ctrl+Alt+O  list / badge / off' }
+  $foot = $parts -join "   $DOT   "
   $f = Text $foot 10.5 '#8F8576'
   $f.Margin = '0,8,0,0'; $f.HorizontalAlignment = 'Right'
   [void]$root.Children.Add($f)

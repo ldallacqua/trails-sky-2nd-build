@@ -91,7 +91,7 @@ function overlay() {
   const out = {
     ok: true, chapter: current.chapter ? current.chapter.title : '', saved: current.save.written,
     art: !!(current.assets && current.assets.icons), faces: current.assets ? current.assets.faces : [],
-    notes: false, steps: [], waiting: 0, optional: 0, stage: '', note: '', lineup: '', lineupOk: false
+    notes: false, steps: [], waiting: 0, optional: 0, stage: '', note: '', lineup: '', lineupOk: false, workshop: ''
   };
   try {
     const box = { window: {}, atob, TextDecoder, Uint8Array };
@@ -115,6 +115,8 @@ function overlay() {
     out.waiting = m.gearWait.filter(inParty).length;
     out.optional = m.gearOptional.filter(inParty).length;
     if (m.stage) { out.stage = m.stage.title; out.note = m.stage.note; }
+    // what to synthesize and which slots to raise, as one line
+    if (m.workshop && m.workshop.text) out.workshop = m.workshop.text;
     // the four in the save against the four the notes would field here
     out.lineupOk = !!(m.lineup && m.lineup.pick.length && m.lineup.same);
     if (m.lineup && !m.lineup.same) {

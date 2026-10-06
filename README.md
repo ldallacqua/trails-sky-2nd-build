@@ -27,6 +27,7 @@ It updates a few seconds after the game saves. No reload, no buttons, nothing to
 ## Highlights
 
 - **Follows the save.** Chapter, active party and reserve, every slot, weapon, armour and accessory, the whole bag, which shop stock the story has opened, and HP, EP and CP as of the last save.
+- **Spends your sepith for you.** It reads the sepith in the bag and each slot's level, takes synthesis and slot-upgrade costs from the game's tables, and turns what you can afford into steps: which quartz to synthesize, which slots to raise, in priority order.
 - **Suggests the four to field.** For the stretch of the chapter your save is in: the members the game requires, then the best of the others who are with you, each with the reason. If your four differ, the page and the overlay say who to bring in for whom.
 - **Knows where in the chapter you are.** The save's story flags say which objective the game is showing. When the story sets the lineup for a stretch, or a decision is about to close something off, the page and the overlay say so at that point and not before.
 - **Works out the Arts for you.** Each orbment's lines are traced the way the game does it, the elemental values are added up, and the page lists every Art that layout can cast, with EP cost.
@@ -154,7 +155,7 @@ The decoder is in the repo and has no dependencies: `tools/texture.js` unpacks L
 | `model.js` | The plan itself: what each slot and each piece of gear should be given what you own, the steps to get there, the orbment lines and the Arts. Shared by the page and the server. |
 | `server.js` | The local live server: watches the save folder, pushes changes to the page, gates chapters and character art, and works out the steps for the overlay. |
 | `tools/overlay.ps1`, `start-overlay.cmd` | The in-game overlay and its launcher. |
-| `tools/read-save.js` | Reads a save: chapter, current objective, party, slots, gear, bag. Also runs on its own. |
+| `tools/read-save.js` | Reads a save: chapter, current objective, party, slots and their levels, gear, bag, sepith. Also runs on its own. |
 | `tools/build.js` | Validates the chapter notes against the game's tables and writes `chapters/*.dat` and `game-data.js`. |
 | `tools/extract-assets.js`, `tools/texture.js` | Pull art out of the game's image archive and decode it. |
 | `chapters/chN.dat` | Sealed notes, one per chapter. |

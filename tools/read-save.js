@@ -27,6 +27,7 @@ const GAME_DIR = process.env.SKY2_GAME_DIR || 'C:\\Steam\\steamapps\\common\\Tra
 const SAVE_DIR = process.env.SKY2_SAVE_DIR || path.join(os.homedir(), 'Saved Games', 'Falcom', 'Trails in the Sky 2nd Chapter', 'savedata');
 
 const INV_BASE = 0x128a44;   // per item id: u16 count in the bag, u16 flags
+const SEPITH_AT = 0x20b620;  // seven u32 counts in element order, then Sepith Mass
 const REC_FIRST = 0x1147bc;  // first character record's orbment block
 const REC_SIZE = 0x2a0;
 const REC_MAX = 16;
@@ -227,6 +228,22 @@ function unpack(buf) {
   return zlib.zstdDecompressSync(buf.subarray(off, off + len));
 }
 
+// The seven slot levels follow the seven quartz ids in a character's orbment block, stored
+// from 0. Left out if they do not look like levels, so nothing is advised from a bad read.
+function slotLevels(b, o) {
+  const v = SLOT_ORDER.map((_, n) => b.readUInt32LE(o + (7 + n) * 4));
+  return v.every((x) => x <= 2) ? Object.fromEntries(SLOT_ORDER.map((k, n) => [k, v[n] + 1])) : null;
+}
+// Sepith in hand, by element, plus Sepith Mass. null if the numbers are not believable.
+function readSepith(b) {
+  if (SEPITH_AT + 32 > b.length) return null;
+  const v = Array.from({ length: 8 }, (_, k) => b.readUInt32LE(SEPITH_AT + k * 4));
+  if (v.some((x) => x > 9999999)) return null;
+  const out = { mass: v[7] };
+  ELEMENTS.forEach((e, k) => { out[e] = v[k]; });
+  return out;
+}
+
 // Reads one savedata file. The file is read in a single call and never held open.
 function readSaveFile(file, game) {
   const b = unpack(fs.readFileSync(file));
@@ -262,6 +279,8 @@ function readSaveFile(file, game) {
       // as of the moment the game wrote this save
       now: { hp: b.readUInt32LE(s + 12), ep: b.readUInt32LE(s + 20), cp: b.readUInt32LE(s + 28), cpMax: b.readUInt32LE(s + 32) },
       slots: Object.fromEntries(SLOT_ORDER.map((k, n) => [k, nm(q[n])])),
+      // each slot's level, 1 to 3: a quartz only fits a slot of its own level or higher
+      levels: slotLevels(b, o),
       lines: lay.lines, locks: lay.locks,
       weapon: gear[0], armor: gear[1], shoes: gear[2], accessories: [gear[3], gear[4]],
       icons: { weapon: cell(gearIds[0]), armor: cell(gearIds[1]), shoes: cell(gearIds[2]) }
@@ -287,7 +306,7 @@ function readSaveFile(file, game) {
     chapter = { n, title: game.chapters.get(n) };
   }
 
-  const bag = { quartz: [], accessories: [], gear: [], materials: [], supplies: [], food: { kinds: 0, total: 0 }, uMaterial: 0 };
+  const bag = { quartz: [], accessories: [], gear: [], materials: [], supplies: [], food: { kinds: 0, total: 0 }, uMaterial: 0, sepith: readSepith(b) };
   for (const [id, name] of game.items) {
     const count = b.readUInt16LE(INV_BASE + id * 4);
     if (!count) continue;
@@ -336,7 +355,7 @@ function main() {
   for (const c of Object.values(data.characters)) {
     console.log(c.name + '  (Lv ' + c.level + ', HP ' + c.now.hp + '/' + c.hp + ', EP ' + c.now.ep + '/' + c.ep + ', CP ' + c.now.cp + '/' + c.now.cpMax + ')');
     for (const k of ['t', 'ul', 'ur', 'c', 'll', 'lr', 'b']) {
-      console.log('   ' + SLOT_NAME[k].padEnd(12) + (c.slots[k] || '(empty)') + (c.locks[k] ? '   [' + c.locks[k] + ' only]' : ''));
+      console.log('   ' + SLOT_NAME[k].padEnd(12) + (c.slots[k] || '(empty)') + (c.locks[k] ? '   [' + c.locks[k] + ' only]' : '') + (c.levels ? '   Lv ' + c.levels[k] : ''));
     }
     console.log('   Lines       ' + c.lines.map((l) => l.join('>')).join('   '));
     console.log('   Gear        ' + [c.weapon, c.armor, c.shoes].map((x) => x || '(none)').join(' / '));
@@ -348,6 +367,8 @@ function main() {
   console.log('Healing and support items:\n  ' + list(data.bag.supplies) + '\n');
   console.log('Spare weapons, armour and footwear in the bag:\n  ' + list(data.bag.gear) + '\n');
   console.log('Upgrade materials:\n  ' + list(data.bag.materials) + '\n');
+  const sp = data.bag.sepith;
+  console.log('Sepith: ' + (sp ? ELEMENTS.map((e) => e[0].toUpperCase() + e.slice(1) + ' ' + sp[e]).join(', ') + ', Mass ' + sp.mass : 'not recognised') + '\n');
   console.log('Food: ' + data.bag.food.total + ' across ' + data.bag.food.kinds + ' kinds');
   console.log('Story flags: ' + (data.story ? 'read, ' + data.story.length + ' of the ones the page goes by are set' : 'not recognised, going by the chapter'));
 }

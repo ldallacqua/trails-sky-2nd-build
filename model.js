@@ -89,6 +89,16 @@
   }
   function isOpen(win) { return !!win && reached(win[0]) && !(win[1] && reached(win[1])); }
   function matsText(mats) { return mats.map(function (x) { return x[0] + ' ×' + x[1]; }).join(', '); }
+  // sepith by element, in a few words: "Time 1,500, Mirage 200" or "600 of each sepith"
+  function num(n) { return String(n).replace(/\B(?=(\d{3})+$)/g, ','); }
+  function sepithText(cost) {
+    var same = cost[0] > 0 && cost.every(function (x) { return x === cost[0]; });
+    if (same) return num(cost[0]) + ' of each sepith';
+    return ELS.map(function (e, i) { return cost[i] ? e.charAt(0).toUpperCase() + e.slice(1) + ' ' + num(cost[i]) : ''; }).filter(Boolean).join(', ') + ' sepith';
+  }
+  // the slot level a quartz needs, and what a workshop asks to synthesize it, if it does now
+  function quartzLevel(name) { var g = G.quartz[name]; return (g && g[4]) || 1; }
+  function synthCost(name) { var g = G.quartz[name]; return g && g[5] && isOpen(g[6]) ? g[5] : null; }
   function mira(n) { return String(n).replace(/\B(?=(\d{3})+$)/g, ',') + ' mira'; }
   function chestText(name) {
     var src = CH && CH.gearSrc && CH.gearSrc[name];
@@ -433,6 +443,7 @@
       pass(function (x) { return !!x.has; }, function (x) { return { name: x.has, later: x.s.t, waiting: true }; });
       pass(function () { return true; }, function (x) { return { name: x.s.t, later: null, missing: true }; });
     }
+    if (live) planSepith(m, slots);
     slots.forEach(function (x) { m.alloc[x.id][x.k] = x.res; });
 
     // rows of the upgrade list: every quartz the active party is still waiting for, or already got
@@ -444,8 +455,10 @@
         var s = b.slots[k], a = m.alloc[id][k];
         if (!s.u && !a.missing && !a.waiting) return; // a plain slot you already have the quartz for
         var r = rowOf[s.t] || (rowOf[s.t] = { name: s.t, wants: [], got: 0 });
-        var got = a.name === s.t && !a.missing;
-        r.wants.push({ id: id, who: b.name, slot: k, replaces: s.u || null, got: got });
+        var got = a.name === s.t && !a.missing && !a.make;
+        r.wants.push({ id: id, who: b.name, slot: k, replaces: s.u || null, got: got, make: !!a.make });
+        if (a.make) r.making = (r.making || 0) + 1;
+        if (a.short) r.short = a.short;
         if (got) r.got++;
       });
     });
@@ -455,6 +468,7 @@
       var r = rowOf[n];
       r.src = CH.sources[n] || null;
       r.done = r.got === r.wants.length;
+      r.synth = synthCost(n);
       return r;
     });
 
@@ -469,6 +483,80 @@
 
     if (live) planMoves(m, isActive);
     return m;
+  }
+
+  // What the sepith in the bag can do for the party right now. A slot only takes quartz of its
+  // own level or lower, so a quartz the plan wants in a lower slot needs that slot raised first.
+  // And a quartz nobody owns yet may be one a workshop will synthesize. Both are paid for from
+  // the same sepith, in the order the upgrade list ranks them, until it runs out.
+  function planSepith(m, slots) {
+    var have = live.bag.sepith;
+    m.sepithStale = !have; // an older live server is still running: it does not report sepith or slot levels
+    m.sepith = null;
+    if (!have) return;
+    var pool = ELS.map(function (e) { return have[e] || 0; });
+    var none = [0, 0, 0, 0, 0, 0, 0];
+    var plus = function (a, b) { return a.map(function (x, i) { return x + b[i]; }); };
+    var lack = function (c) { return c.map(function (x, i) { return Math.max(0, x - pool[i]); }); };
+    var can = function (c) { return c.every(function (x, i) { return pool[i] >= x; }); };
+    var pay = function (c) { pool = pool.map(function (x, i) { return x - c[i]; }); };
+    // what raising this slot to hold `name` costs: null when it already can
+    function raise(x, name) {
+      var lv = live.characters[x.id].levels, at = lv ? lv[x.k] : null, to = quartzLevel(name);
+      var table = G.slotCost && G.slotCost[x.id] && G.slotCost[x.id][x.k];
+      if (!at || at >= to || !table) return null;
+      if (to > cap) return { from: at, to: to, cost: none, locked: true }; // workshops do not offer that level yet
+      var cost = none;
+      for (var l = at; l < to; l++) cost = plus(cost, table[l - 1]);
+      return { from: at, to: to, cost: cost };
+    }
+    var mine = slots.filter(function (x) { return x.active; });
+    // the highest slot level workshops offer at this point of the story
+    var cap = chapterN > 7 || (chapterN === 7 && CH.slot3From && reached(CH.slot3From)) ? 3 : 2;
+    m.workshop = { make: {}, raise: [] };
+    // 1. slots too low for what the build puts there, or for what the plan moves in now
+    mine.forEach(function (x) {
+      if (!x.res) return;
+      var moved = x.res.missing || x.res.name === x.has ? null : x.res.name;
+      var want = [moved, x.s.t].filter(Boolean).sort(function (p, q) { return quartzLevel(q) - quartzLevel(p); })[0];
+      var r = want ? raise(x, want) : null;
+      if (!r) return;
+      r.name = want;
+      x.res.raise = r;
+      if (r.locked) { // nothing to do about it yet: whatever is slotted stays
+        if (moved && x.has) x.res = { name: x.has, later: x.s.t, waiting: true, raise: r };
+        return;
+      }
+      if (can(r.cost)) { pay(r.cost); m.workshop.raise.push({ id: x.id, k: x.k, to: r.to }); } else r.short = lack(r.cost);
+      x.res.raise = r;
+    });
+    // 2. targets nobody owns that a workshop synthesizes, in upgrade-list order. When the
+    //    notes say a chest holds one and you own none yet, the last slot in line waits for it.
+    var rank = Object.keys(CH.sources);
+    var at = function (n) { var i = rank.indexOf(n); return i === -1 ? rank.length : i; };
+    var queue = {};
+    mine.filter(function (x) { return x.res && (x.res.later === x.s.t || x.res.missing); })
+      .forEach(function (x) { (queue[x.s.t] = queue[x.s.t] || []).push(x); });
+    Object.keys(queue).sort(function (p, q) { return at(p) - at(q); }).forEach(function (n) {
+      var cost = synthCost(n), src = CH.sources[n];
+      if (!cost) return;
+      var list = queue[n];
+      if (src && src.tag === 'chest' && !(m.owned && m.owned[n] > 0)) list.pop().res.chest = true;
+      list.forEach(function (x) {
+        if (x.res.raise && (x.res.raise.short || x.res.raise.locked)) return; // it would not fit the slot yet
+        if (!can(cost)) { x.res.short = lack(cost); return; }
+        pay(cost);
+        x.res = { name: n, later: null, make: cost, raise: x.res.raise };
+        m.workshop.make[n] = (m.workshop.make[n] || 0) + 1;
+      });
+    });
+    // the same, as one line to take to the workshop
+    var makes = Object.keys(m.workshop.make).map(function (n) { return n + (m.workshop.make[n] > 1 ? ' ×' + m.workshop.make[n] : ''); });
+    var raises = m.workshop.raise.map(function (r) { return buildOf(r.id).name + '’s ' + POS_NAME[r.k].toLowerCase() + ' slot to level ' + r.to; });
+    m.workshop.text = [makes.length ? 'Synthesize ' + makes.join(', ') + '.' : '', raises.length ? 'Raise ' + raises.join(', ') + '.' : ''].filter(Boolean).join(' ');
+    var used = ELS.map(function (e, i) { return (have[e] || 0) - pool[i]; });
+    m.sepith = { have: ELS.map(function (e) { return have[e] || 0; }), used: used, any: used.some(Boolean) };
+    m.sepith.text = ELS.map(function (e, i) { return used[i] ? e.charAt(0).toUpperCase() + e.slice(1) + ' ' + num(used[i]) + ' of ' + num(have[e] || 0) : ''; }).filter(Boolean).join(', ');
   }
 
   // Works out, slot by slot, what differs from the save and where the replacement physically is.
@@ -517,8 +605,14 @@
       var list = [];
       ORDER.forEach(function (k) {
         var a = m.alloc[b.id][k], has = lc.slots[k];
+        if (a.raise && !a.raise.locked && isActive(b.id)) {
+          list.push({ id: b.id, who: b.name, kind: 'level', pos: POS_NAME[k], from: 'Slot Lv ' + a.raise.from, to: 'Slot Lv ' + a.raise.to,
+            where: 'upgrade the slot at a workshop · ' + sepithText(a.raise.cost) + (a.raise.short ? ' — short by ' + sepithText(a.raise.short) : ''),
+            note: a.raise.name + ' needs a level ' + a.raise.to + ' slot' });
+        }
         if (has === a.name) return;
-        list.push({ id: b.id, who: b.name, kind: 'slot', pos: POS_NAME[k], from: has || 'empty', to: a.name, where: isActive(b.id) ? source(a.name, b.id) : '' });
+        var where = !isActive(b.id) ? '' : a.make ? 'synthesize it at a workshop · ' + sepithText(a.make) : source(a.name, b.id);
+        list.push({ id: b.id, who: b.name, kind: 'slot', pos: POS_NAME[k], from: has || 'empty', to: a.name, where: where });
       });
       GEAR_SLOTS.forEach(function (sl) {
         var e = m.gear[b.id] && m.gear[b.id][sl.key];
@@ -546,7 +640,7 @@
     use: use, compute: compute, buildOf: buildOf, haveKey: haveKey, stageNow: stageNow, lineupNow: lineupNow,
     quartz: quartz, lineValues: lineValues, artsFor: artsFor,
     gear: gear, gearScore: gearScore, gearStats: gearStats, gearGain: gearGain, gearHow: gearHow,
-    reached: reached, isOpen: isOpen, matsText: matsText, mira: mira, chestText: chestText,
+    reached: reached, isOpen: isOpen, matsText: matsText, sepithText: sepithText, quartzLevel: quartzLevel, synthCost: synthCost, mira: mira, chestText: chestText,
     ELS: ELS, ORDER: ORDER, POS_NAME: POS_NAME, GEAR_SLOTS: GEAR_SLOTS, GEAR_KIND: GEAR_KIND
   };
 });

@@ -525,7 +525,7 @@
     var side = el('div', 'char-side');
 
     if (alloc) {
-      var now = todo.filter(function (t) { return t.kind === 'slot'; });
+      var now = todo.filter(function (t) { return t.kind === 'slot' || t.kind === 'level'; });
       var later = [];
       ORDER.forEach(function (k) {
         if (!alloc[k].later) return;
@@ -1103,6 +1103,12 @@
     // a live server started before v24 does not say which objective the save is at
     else if (!('objective' in live)) host.appendChild(el('p', 'helpbar is-warn', 'To follow where in the chapter you are, the page needs the newer live server. Close the start-live.cmd window and run it again.'));
     if (m.stage && m.stage.note) host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', m.stage.title + ' · '), document.createTextNode(m.stage.note)));
+    // a live server started before v26 does not report sepith or slot levels
+    if (m.sepithStale && !m.gearStale && ('objective' in live)) host.appendChild(el('p', 'helpbar is-warn', 'To say what you can synthesize and which slots to raise, the page needs the newer live server. Close the start-live.cmd window and run it again.'));
+    // everything the sepith in the bag pays for, as one line to take to the workshop
+    if (m.workshop && m.workshop.text) {
+      host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', 'At a workshop · '), document.createTextNode(m.workshop.text)));
+    }
     // the four in the save are not the four the notes would field here
     if (m.lineup && !m.lineup.same) {
       var nameOf = function (id) { var b = buildOf(id); return b ? b.name : (live.characters[id] ? live.characters[id].name : id); };
@@ -1150,6 +1156,7 @@
       grid.appendChild(g);
     });
     host.appendChild(grid);
+    if (m.sepith && m.sepith.any) host.appendChild(el('p', 'quiet mats-line', 'The workshop steps above use sepith: ' + m.sepith.text + '.'));
     var used = Object.keys(m.matsUsed);
     if (used.length) {
       host.appendChild(el('p', 'quiet mats-line', 'The upgrades above use ' + used.map(function (n) { return n + ' ×' + m.matsUsed[n] + ' of your ' + (m.matsHave[n] || 0); }).join(', ') + '.'));
@@ -1187,11 +1194,17 @@
       if (r.gear) tdWhere.appendChild(el('span', 'tag', r.src && r.src.tag ? r.src.tag : 'chest'));
       else if (r.src && r.src.tag) tdWhere.appendChild(el('span', 'tag', r.src.tag));
       if (r.src && r.src.also) tdWhere.appendChild(el('span', 'fx', 'also: ' + r.src.also));
+      // what the sepith in the bag makes of it right now
+      if (live && !r.gear && !r.done && r.synth) {
+        if (r.making) tdWhere.appendChild(add(el('span', 'fx make'), el('span', 'tag tag-ok', 'you can make ' + (r.making > 1 ? r.making : 'it') + ' now'), document.createTextNode(' ' + M.sepithText(r.synth) + (r.making > 1 ? ' each' : ''))));
+        else if (r.short) tdWhere.appendChild(el('span', 'fx', 'to synthesize: ' + M.sepithText(r.synth) + ' — short by ' + M.sepithText(r.short)));
+      }
       var tdTo = el('td', 'col-to');
       r.wants.forEach(function (w) {
         var line = el('span', 'goes' + (w.got ? ' goes-ok' : ''));
         add(line, art() ? avatar(w.id, w.who, 'avatar-xs') : null, el('strong', '', (w.got ? '✓ ' : '') + w.who), document.createTextNode(', ' + (w.label || POS_NAME[w.slot]).toLowerCase()));
-        if (w.replaces && !w.got) line.appendChild(el('span', 'fx', 'replaces ' + w.replaces));
+        if (w.replaces && !w.got) line.appendChild(el('span', 'fx', 'replaces ' + w.replaces + (w.make ? ' · synthesize' : '')));
+        else if (w.make) line.appendChild(el('span', 'fx', 'synthesize'));
         tdTo.appendChild(line);
       });
       add(tr, tdCheck, tdName, tdWhere, tdTo);

@@ -718,6 +718,7 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .helpbar.is-stage strong { color: var(--num); }
 .stage-notes { list-style: none; margin: 2px 0 6px; padding: 7px 18px 8px; border: 1px solid #e3c9b4; border-left: 7px solid #d63a2b; border-radius: 3px; background: #fffaf1; color: var(--note-ink); }
 .stage-notes li { margin: 2px 0; }
+.fx.make .tag { margin-left: 0; }
 /* who to field right now */
 .lineup { margin: 0 0 20px; }
 .lineup-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 9px; }
