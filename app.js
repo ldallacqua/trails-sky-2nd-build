@@ -1053,6 +1053,8 @@
       return;
     }
     if (m.gearStale) host.appendChild(el('p', 'helpbar is-warn', 'Weapon, armour and footwear advice needs the newer live server. Close the start-live.cmd window and run it again.'));
+    // a live server started before v24 does not say which objective the save is at
+    else if (!('objective' in live)) host.appendChild(el('p', 'helpbar is-warn', 'To follow where in the chapter you are, the page needs the newer live server. Close the start-live.cmd window and run it again.'));
     if (m.stage && m.stage.note) host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', m.stage.title + ' · '), document.createTextNode(m.stage.note)));
     // upgrades the plan wants but the bag cannot pay for yet, and ones that are hardly worth it
     var held = function (heading, list) {
