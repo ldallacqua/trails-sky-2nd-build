@@ -228,11 +228,20 @@
       return root;
     }
 
+    // Chest armour and footwear are for men or for women only. Who is which is read off the
+    // model files, so if the save shows someone wearing the other cut, the rule is dropped for them.
+    var cutOf = {};
+    order.forEach(function (id) {
+      var sex = buildOf(id).sex, lc = live ? live.characters[id] : null;
+      var clash = lc && GEAR_SLOTS.some(function (sl) { var g = gear(lc[sl.key]); return g && g.sex && g.sex !== sex; });
+      cutOf[id] = clash ? null : sex;
+    });
     // every piece a character could use in a slot, best first
     function candidates(id, sl, has) {
       var stat = buildOf(id).stat;
       return Object.keys(G.gear).filter(function (n) {
         var g = G.gear[n];
+        if (g.sex && cutOf[id] && g.sex !== cutOf[id]) return false;
         return g.k === sl.k && (sl.k !== 'w' || g.who === id) && (owned[n] > 0 || inScope(g));
       }).map(function (n) { return { id: id, n: n, v: gearScore(n, stat), worn: n === has ? 1 : 0 }; })
         .sort(function (p, q) { return q.v - p.v || q.worn - p.worn || p.n.localeCompare(q.n); });
@@ -744,7 +753,7 @@
   }
   function tipGear(name) {
     var g = gear(name);
-    var box = tipFrame(itemIcon(g.i), name, GEAR_KIND[g.k]);
+    var box = tipFrame(itemIcon(g.i), name, GEAR_KIND[g.k] + (g.sex ? (g.sex === 'm' ? ' · men only' : ' · women only') : ''));
     tipLine(box, 'tip-fx', gearStats(name) || 'No stats on record.');
     if (g.from) tipLine(box, 'tip-meta', 'Upgraded from ' + g.from[0] + ' at an orbal factory: ' + matsText(g.from[1]) + (isOpen(g.up) ? '' : ' · not on offer right now'));
     var plus = gear(name + '+');
@@ -1340,7 +1349,7 @@
     });
     gnames.forEach(function (n) {
       var tr = el('tr');
-      add(tr, thing(n, 'th'), el('td', '', GEAR_KIND[gear(n).k]), el('td', '', gearStats(n) || '—'),
+      add(tr, thing(n, 'th'), el('td', '', GEAR_KIND[gear(n).k] + (gear(n).sex ? (gear(n).sex === 'm' ? ', men only' : ', women only') : '')), el('td', '', gearStats(n) || '—'),
         el('td', gw[n].length ? '' : 'quiet', gw[n].length ? gw[n].join(', ') : (live ? 'not owned yet' : '—')));
       gt.appendChild(tr);
     });

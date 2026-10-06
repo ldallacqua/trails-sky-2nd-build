@@ -242,6 +242,7 @@
               <li><strong>Three lines per chapter.</strong> Shops sell one weapon per character, one armour and one footwear. Chests hold a second line: armour and footwear with STR or with ATS on top, and for some characters a stronger weapon. There is one of each.</li>
               <li><strong>Upgrades.</strong> An orbal factory turns a piece into its + version for U-Material and monster parts. A chest piece is a little behind the upgraded shop piece until it is upgraded too, and ahead of it afterwards.</li>
               <li><strong>Ranking.</strong> Each piece is scored for the character: their attack stat (STR or ATS) and both defences count in full, the other attack stat a fifth, a point of SPD as eight. The best piece they can have right now is the one shown.</li>
+              <li><strong>Men's and women's cuts.</strong> Chest armour and footwear can only be worn by men or only by women. Shop gear and weapons have no such limit. A piece is never suggested for someone who cannot wear it.</li>
               <li><strong>One copy.</strong> A chest piece goes to whoever gets the most out of it. On a tie the chapter's priority order decides.</li>
               <li><strong>Materials.</strong> Upgrades are paid for from your bag in order of gain per U-Material. What you cannot afford yet is listed as waiting, not as a step.</li>
               <li><strong>Reserve.</strong> Characters on the bench only get what is spare. Nothing is bought or upgraded for them.</li>
@@ -284,6 +285,7 @@
                 <tr><th>Weapon, armour and footwear stats, and who can use a weapon</th><td>The game's own item table. Silver Intention's gear lists agree, apart from one typing slip on their side.</td></tr>
                 <tr><th>What shops sell and when, and upgrade recipes</th><td>The game's own shop table, with the story flags in your save. Kamigame's armour list gives the same recipes.</td></tr>
                 <tr><th>Which chest holds which piece of gear</th><td>The game's own chest and place tables. Silver Intention lists the same places.</td></tr>
+                <tr><th>Which armour and footwear are for men or for women only</th><td>The flags in the game's own item table (16 pieces of each kind per cut). Which character is which is read off the model file numbering, which fits all eight characters checked; a piece worn in your save that contradicts it switches the rule off for that character.</td></tr>
                 <tr><th>That upgrades are done at an orbal factory</th><td>Inferred from the shop table (only factories carry the upgrade list). Not checked in game.</td></tr>
                 <tr><th>Which piece is best for a character</th><td>A score, not a game fact: see “How gear is picked”. The damage formula is not known, so close calls are judgement.</td></tr>
                 <tr><th>Quartz effects</th><td>The game's own item table, worded with the game's help text. Effects whose numbers could not be checked against in-game text are left out.</td></tr>
@@ -325,6 +327,7 @@
             <li>Upgrades you cannot pay for yet, and ones that add little for the U-Material, are listed apart from the steps to do now.</li>
             <li>The bag shows spare gear and upgrade materials. The reference has a gear table and a note on how gear is picked.</li>
             <li>Fixed: the portrait on each character banner was stretched into an oval.</li>
+            <li>Fixed the same day: chest armour and footwear are for men or for women only, and the first version ignored that (it sent Edel Girders+ to Kloe).</li>
           </ul>
           <h3>v21 — 2026-10-05</h3>
           <ul class="notes">

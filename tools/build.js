@@ -209,6 +209,9 @@ for (const [id, name] of game.items) {
   if (extra) g.x = extra;
   if (game.icons.get(id) != null) g.i = game.icons.get(id);
   g.p = b.readUInt32LE(o + 0xd0);
+  // armour and footwear from chests are cut for men or for women: an M or an F among the item's flags
+  const cut = /[MF]/.exec(itemTable.str(b.readUInt32LE(o + 0x20)));
+  if (cut && k !== 'w') g.sex = cut[0].toLowerCase();
   const sell = shopWindow(k === 'w' ? 1006 : 1007, id), up = shopWindow(1002, id), from = recipeOf(id);
   if (sell) g.sell = sell;
   if (up && from) { g.up = up; g.from = from; }
@@ -276,6 +279,8 @@ function buildChapter(src) {
     const caster = Object.values(slots).some((s) => forArts(s.t) || forArts(s.u));
     return {
       id: c.id, name: game.people.get(cid).name, role: c.role || '', stat: c.stat || (caster ? 'ats' : 'str'),
+      // No table states it, but the model files of the women are numbered from 5000 and the men's are not.
+      sex: /^chr5/.test(game.people.get(cid).model) ? 'f' : 'm',
       lines: lay.lines, locks: lay.locks, slots,
       accessories: c.accessories || [], notes: c.notes || []
     };
