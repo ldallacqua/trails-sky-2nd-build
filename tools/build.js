@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadGame, loadTable, loadShop, ELEMENTS, SLOT_ORDER, CHAPTER_FLAG } = require('./read-save.js');
+const { loadPartyLog } = require('./party-log.js');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'chapters-src');
@@ -49,6 +50,8 @@ if (args.includes('--unseal')) {
 
 // ---- game data ---------------------------------------------------------------
 const game = loadGame();
+// who the game's own scripts put in the party, and lock there, after each story event
+const partyLog = loadPartyLog(game);
 const idByName = new Map();
 for (const [id, name] of game.items) if (!idByName.has(name)) idByName.set(name, id);
 const cidById = new Map();
@@ -360,6 +363,7 @@ function buildChapter(src) {
     n: src.n, title: src.title, region: src.region || '', intro: src.intro || [],
     party, sources: src.sources || {}, quartz, characters,
     gearOrder: src.gearOrder || [], gearSrc, stages,
+    partyLog: partyLog.get(src.n) || [],
     // the objective from which workshops raise slots to level 3 (one chapter only names it)
     slot3From: src.slot3From ? flagOf(src.slot3From, 'ch' + src.n + ' slot3From') : null,
     sections: src.sections || [], source: src

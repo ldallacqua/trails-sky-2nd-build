@@ -739,6 +739,7 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .lineup-swap { margin: 11px 0 0; padding: 8px 14px 9px; border-left: 5px solid #d63a2b; border-radius: 3px; background: #fff3ee; font-weight: 700; }
 .lineup details { margin-top: 10px; }
 .lineup > .quiet { margin: 10px 0 0; }
+.lineup > .lineup-src { font-size: 0.84rem; }
 a.helpbar.is-lineup { display: block; text-decoration: none; }
 a.helpbar.is-lineup:hover, a.helpbar.is-lineup:focus-visible { filter: brightness(1.15); }
 .manual { margin-top: 16px; padding-top: 12px; border-top: 1px solid #d5dbe0; }

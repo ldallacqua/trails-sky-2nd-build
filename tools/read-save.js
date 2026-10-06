@@ -166,9 +166,16 @@ function loadGame() {
     if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
   }
   const objectives = loadObjectives();
+  // the flag each story event sets when it is over, by chapter (events are named EV_<chapter>_...)
+  const ev = loadTable('t_evtable.tbl');
+  const eventFlags = new Map();
+  for (const e of ev.rows('EventTableData')) {
+    const m = /^EV_(\d\d)_\d\d_\d\d$/.exec(ev.str(ev.b.readUInt32LE(e + 8))), f = ev.b.readUInt32LE(e + 48);
+    if (m && f) (eventFlags.get(+m[1]) || eventFlags.set(+m[1], []).get(+m[1])).push(f);
+  }
   const gates = new Set(loadShop().gates);
   for (const o of objectives) o.from.concat(o.until).forEach((f) => { if (f >= CHAPTER_FLAG) gates.add(f); });
-  return { items, kinds, icons, people, layouts, chapters, objectives, gates: [...gates].sort((a, b) => a - b) };
+  return { items, kinds, icons, people, layouts, chapters, objectives, eventFlags, gates: [...gates].sort((a, b) => a - b) };
 }
 
 // The objective list: the one-line goal the game shows while you play. A row is shown from one
@@ -323,15 +330,17 @@ function readSaveFile(file, game) {
 
   // Which tiers of shop stock are open: the gate flags that are set. Only trusted when the
   // flags agree with the chapter; otherwise left out, and the page goes by the chapter alone.
-  let story = null, objective = null;
+  let story = null, objective = null, events = null;
   const flag = (f) => !!(b[FLAGS_AT + (f >> 3)] & (1 << (f & 7)));
   if (chapter && game.gates && flag(CHAPTER_FLAG + chapter.n * 1000) && !flag(CHAPTER_FLAG + (chapter.n + 1) * 1000)) {
     story = game.gates.filter(flag);
+    // which of this chapter's story events are over: the page replays the party changes they made
+    if (game.eventFlags) events = (game.eventFlags.get(chapter.n) || []).filter(flag);
     // the objective the game is showing: only reported when exactly one row fits
     const at = (game.objectives || []).filter((o) => o.chapter === chapter.n && o.from.length && o.from.every(flag) && !o.until.some(flag));
     if (at.length === 1) objective = { text: at[0].text, from: at[0].from[0] };
   }
-  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag, story, objective };
+  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag, story, objective, events };
 }
 
 module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, loadTable, loadItemNames, loadGame, loadShop, loadObjectives, newestSave, readSaveFile };

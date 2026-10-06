@@ -335,6 +335,19 @@
     return null;
   }
 
+  // ---- what the game's scripts last did to the party, for where the save is ----
+  // The build replays the scripts' party changes event by event. The save says which of the
+  // chapter's events are over; the last of those in story order is the state that holds now.
+  // Dropped if it has someone you are fielding as away: then the replay does not fit this save.
+  function partyNow(party) {
+    if (!live || !live.events || !CH.partyLog) return null;
+    var cur = null;
+    CH.partyLog.forEach(function (e) { if (live.events.indexOf(e.flag) !== -1) cur = e; });
+    if (!cur || !cur.here.length) return null;
+    var fits = party.every(function (id) { return cur.here.indexOf(id) !== -1 && cur.away.indexOf(id) === -1; });
+    return fits ? cur : null;
+  }
+
   // ---- the lineup the notes suggest for where the save is ----
   // The members the game requires come first, then the others in the order the notes rank
   // them, as far as they are with you. Members the notes rank as equals do not displace each
@@ -352,10 +365,17 @@
       return out;
     }
     var party = live.party.slice(), roster = party.concat(live.reserve);
-    if (L.set) { out.pick = party; out.fixed = party.slice(); return out; }
-    var here = function (id) { return roster.indexOf(id) !== -1 && L.away.indexOf(id) === -1; };
+    // Who is locked in and who is away comes from the game's own scripts when the save says
+    // which story events are over; the notes' word for it is the fallback.
+    var P = partyNow(party);
+    out.source = P ? 'game' : 'notes';
+    var fixedIds = P ? P.fixed.concat(L.fixed.filter(function (id) { return P.fixed.indexOf(id) === -1 && L.rank.every(function (r) { return r.id !== id; }); })) : L.fixed;
+    var isAway = function (id) { return P ? P.here.indexOf(id) === -1 || P.away.indexOf(id) !== -1 : L.away.indexOf(id) !== -1; };
+    var here = function (id) { return roster.indexOf(id) !== -1 && !isAway(id); };
+    // nobody to choose between: the game has set the lineup
+    if (L.set || (P && roster.filter(here).length <= party.length)) { out.set = true; out.pick = party; out.fixed = party.slice(); return out; }
     var inParty = function (id) { return party.indexOf(id) !== -1; };
-    var pick = L.fixed.filter(here).slice(0, party.length);
+    var pick = fixedIds.filter(here).slice(0, party.length);
     out.fixed = pick.slice();
     var ranked = L.rank.filter(function (r) { return here(r.id) && pick.indexOf(r.id) === -1; }).map(function (r, i) { return { id: r.id, tier: r.tier, i: i }; });
     ranked.sort(function (a, b) { return a.tier - b.tier || (inParty(b.id) - inParty(a.id)) || a.i - b.i; });

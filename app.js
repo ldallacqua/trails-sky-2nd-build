@@ -1046,7 +1046,7 @@
         L.set ? null : el('span', 'tag ' + (fixed ? 'tag-fixed' : 'tag-pick'), fixed ? 'Fixed' : 'Pick'),
         isNew ? el('span', 'tag tag-warn', 'Not in your four') : null);
       li.appendChild(who);
-      var why = fixed ? (L.set ? '' : 'The game requires this member here.') : L.why[id];
+      var why = fixed ? (L.set ? '' : L.source === 'game' ? 'Locked in by the game for this stretch.' : 'The notes have this member as required here.') : L.why[id];
       if (why) li.appendChild(el('p', 'lineup-why', why));
       ul.appendChild(li);
     });
@@ -1063,6 +1063,10 @@
       box.appendChild(d);
     }
     if (L.note) box.appendChild(rich('p', 'quiet', L.note));
+    // how far to trust who is marked as locked
+    if (live && !L.set) box.appendChild(el('p', 'quiet lineup-src', L.source === 'game'
+      ? 'Who is locked in and who is away is read from the game’s own event scripts, for the events your save has passed.'
+      : 'Who is locked in comes from the notes here, not from the game. The party menu’s padlocks are the last word.'));
     return box;
   }
 
