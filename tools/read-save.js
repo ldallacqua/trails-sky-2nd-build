@@ -30,10 +30,18 @@ const INV_BASE = 0x128a44;   // per item id: u16 count in the bag, u16 flags
 const SEPITH_AT = 0x20b620;  // seven u32 counts in element order, then Sepith Mass
 const REC_FIRST = 0x1147bc;  // first character record's orbment block
 const REC_SIZE = 0x2a0;
-const REC_MAX = 16;
+const REC_MAX = 64;          // the table runs on past the first eight: people who join later have records further down
 const STATS_BACK = 0x22c;    // char id / level / HP / EP block sits this far before the orbment block
 const CHAPTER_AT = 0x5103c;  // script variable: 0x40000000 | chapter number (0 = prologue)
-const PARTY_AT = 0x51454;    // u16 character ids, 0xffff ends the list; the first four are the active party
+// Four parties, one after the other: a u32 capacity, 64 u16 member ids (0xffff = empty) and 64
+// u32 flag words, one per member. Party 0 is the one you normally play; the story parks copies
+// in the others and at times plays from one of them.
+const PARTY_AT = 0x51450;
+const PARTY_SIZE = 0x188;
+const PARTY_SLOTS = 64;
+const PARTY_COUNT = 4;
+// a member's flag word, the same bits the event scripts pass when someone joins
+const MEMBER = { LOCKED: 0x20, RESERVE: 0x40, NO_PLAY: 0x80, HIDDEN: 0x800 };
 const VAR_TAG = 0x40000000;
 const FLAGS_AT = 0xc;        // story flags, one bit each; flag 16000 + 1000 * n is set when chapter n starts
 const CHAPTER_FLAG = 16000;
@@ -166,16 +174,9 @@ function loadGame() {
     if (!chapters.has(n)) chapters.set(n, ch.str(ch.b.readUInt32LE(e + 0x18)));
   }
   const objectives = loadObjectives();
-  // the flag each story event sets when it is over, by chapter (events are named EV_<chapter>_...)
-  const ev = loadTable('t_evtable.tbl');
-  const eventFlags = new Map();
-  for (const e of ev.rows('EventTableData')) {
-    const m = /^EV_(\d\d)_\d\d_\d\d$/.exec(ev.str(ev.b.readUInt32LE(e + 8))), f = ev.b.readUInt32LE(e + 48);
-    if (m && f) (eventFlags.get(+m[1]) || eventFlags.set(+m[1], []).get(+m[1])).push(f);
-  }
   const gates = new Set(loadShop().gates);
   for (const o of objectives) o.from.concat(o.until).forEach((f) => { if (f >= CHAPTER_FLAG) gates.add(f); });
-  return { items, kinds, icons, people, layouts, chapters, objectives, eventFlags, gates: [...gates].sort((a, b) => a - b) };
+  return { items, kinds, icons, people, layouts, chapters, objectives, gates: [...gates].sort((a, b) => a - b) };
 }
 
 // The objective list: the one-line goal the game shows while you play. A row is shown from one
@@ -193,16 +194,21 @@ function loadObjectives() {
 // The shop table. Every town sells from the same lists. A row is on sale once one of its "from"
 // flags is set, and until one of its "until" flags is.
 //   stock    [{ list, item, from: [flag], until: [flag] }]
-//            list 1002 = upgrades, 1006 = weapons, 1007 = armour and footwear
+//            list 1000 = quartz synthesis, 1002 = upgrades, 1006 = weapons, 1007 = armour and footwear
+//   own      the same rows for lists that belong to one shop only (the list number is the shop's)
+//   shops    shop number -> { name, type }   type 0 arms, 1 general, 2 and 3 orbal factories, 4 medal exchange, 5 special
 //   recipes  result item id -> { base, count, mats: [[item id, count]] }
 //   gates    every story flag a row depends on
 function loadShop() {
   const t = loadTable('t_shop.tbl');
   const flags = (at, n) => Array.from({ length: n }, (_, k) => t.b.readUInt16LE(at + k * 2));
-  const stock = t.rows('ShopItem').map((e) => ({
+  const every = t.rows('ShopItem').map((e) => ({
     list: t.b.readUInt16LE(e), item: t.b.readUInt16LE(e + 2),
     from: flags(t.b.readUInt32LE(e + 8), t.b.readUInt32LE(e + 16)), until: flags(t.b.readUInt32LE(e + 24), t.b.readUInt32LE(e + 32))
-  })).filter((r) => r.list >= 1000);
+  }));
+  const stock = every.filter((r) => r.list >= 1000), own = every.filter((r) => r.list < 1000);
+  const shops = new Map();
+  for (const e of t.rows('ShopInfo')) shops.set(t.b.readUInt32LE(e), { name: t.str(t.b.readUInt32LE(e + 8)).trim(), type: t.b.readUInt32LE(e + 16) });
   const recipes = new Map();
   for (const e of t.rows('TradeItem')) {
     const mats = [];
@@ -210,8 +216,8 @@ function loadShop() {
     recipes.set(t.b.readUInt32LE(e), { base: t.b.readUInt32LE(e + 4), count: t.b.readUInt32LE(e + 8), mats });
   }
   const gates = new Set();
-  for (const r of stock) r.from.concat(r.until).forEach((f) => { if (f >= CHAPTER_FLAG) gates.add(f); });
-  return { stock, recipes, gates: [...gates].sort((a, b) => a - b) };
+  for (const r of every) r.from.concat(r.until).forEach((f) => { if (f >= CHAPTER_FLAG) gates.add(f); });
+  return { stock, own, shops, recipes, gates: [...gates].sort((a, b) => a - b) };
 }
 
 // ---- save --------------------------------------------------------------------
@@ -248,6 +254,25 @@ function readSepith(b) {
   if (v.some((x) => x > 9999999)) return null;
   const out = { mass: v[7] };
   ELEMENTS.forEach((e, k) => { out[e] = v[k]; });
+  return out;
+}
+
+// The four parties as the save holds them: [[{ cid, flags }]], or null if the block does not
+// look like one (then nothing is said about locks, and the list is read the old way).
+function readParties(b) {
+  const out = [];
+  for (let k = 0; k < PARTY_COUNT; k++) {
+    const o = PARTY_AT + k * PARTY_SIZE;
+    if (o + PARTY_SIZE > b.length || b.readUInt32LE(o) > PARTY_SLOTS) return null;
+    const members = [];
+    for (let i = 0; i < PARTY_SLOTS; i++) {
+      const cid = b.readUInt16LE(o + 4 + i * 2), flags = b.readUInt32LE(o + 4 + PARTY_SLOTS * 2 + i * 4);
+      if (cid === 0xffff) continue;
+      if (flags > 0xffff || members.some((m) => m.cid === cid)) return null;
+      members.push({ cid, flags });
+    }
+    out.push(members);
+  }
   return out;
 }
 
@@ -295,17 +320,6 @@ function readSaveFile(file, game) {
   }
   if (!characters.estelle) throw new Error('save layout not recognised: Estelle\u2019s record was not found.');
 
-  // party order: the first four are in the active party, the rest are in reserve
-  const party = [];
-  for (let k = 0; k < 16; k++) {
-    const cid = b.readUInt16LE(PARTY_AT + k * 2);
-    if (cid === 0xffff) break;
-    if (idOf.has(cid) && party.indexOf(idOf.get(cid)) === -1) party.push(idOf.get(cid));
-  }
-  // Records exist for people who are not with you right now. Leave them out, so nothing
-  // downstream can show a character before the story does.
-  for (const id of Object.keys(characters)) if (party.indexOf(id) === -1) delete characters[id];
-
   let chapter = null;
   const raw = b.readUInt32LE(CHAPTER_AT);
   if ((raw & 0xf0000000) === VAR_TAG && game.chapters.has(raw & 0xffff)) {
@@ -330,20 +344,57 @@ function readSaveFile(file, game) {
 
   // Which tiers of shop stock are open: the gate flags that are set. Only trusted when the
   // flags agree with the chapter; otherwise left out, and the page goes by the chapter alone.
-  let story = null, objective = null, events = null;
+  let story = null, objective = null;
   const flag = (f) => !!(b[FLAGS_AT + (f >> 3)] & (1 << (f & 7)));
   if (chapter && game.gates && flag(CHAPTER_FLAG + chapter.n * 1000) && !flag(CHAPTER_FLAG + (chapter.n + 1) * 1000)) {
     story = game.gates.filter(flag);
-    // which of this chapter's story events are over: the page replays the party changes they made
-    if (game.eventFlags) events = (game.eventFlags.get(chapter.n) || []).filter(flag);
     // the objective the game is showing: only reported when exactly one row fits
     const at = (game.objectives || []).filter((o) => o.chapter === chapter.n && o.from.length && o.from.every(flag) && !o.until.some(flag));
     if (at.length === 1) objective = { text: at[0].text, from: at[0].from[0] };
   }
-  return { chapter, party: party.slice(0, 4), reserve: party.slice(4), characters, bag, story, objective, events };
+
+  // ---- who is with you, who is fielded, and who the game will not let you move ----
+  // The save keeps a flag word per member: locked into the active party (the padlock in the
+  // party menu), on the bench, with you in name only, or not shown at all.
+  const parties = readParties(b);
+  let party = [], reserve = [], partyState = null;
+  const absent = {};
+  if (parties && parties[0].length) {
+    // Which of the four parties is in use is not in a place this reader knows; the event
+    // scripts say when the story switches. Without them, or when that party has nobody
+    // playable in it, the usual one is shown.
+    let use = 0;
+    if (game.partyScripts && chapter) { try { use = game.partyScripts.current(flag, chapter.n) || 0; } catch (e) { use = 0; } }
+    const playable = (list) => list.filter((m) => idOf.has(m.cid) && !(m.flags & MEMBER.HIDDEN));
+    if (!parties[use] || !playable(parties[use]).length) use = 0;
+    const fixed = [], away = [];
+    for (const m of playable(parties[use])) {
+      const id = idOf.get(m.cid);
+      if (m.flags & MEMBER.NO_PLAY) { away.push(id); continue; }
+      if (m.flags & MEMBER.LOCKED) fixed.push(id);
+      if (m.flags & MEMBER.RESERVE || party.length >= 4) reserve.push(id); else party.push(id);
+    }
+    partyState = { fixed, away, here: party.concat(reserve, away), index: use };
+    // Someone who is away keeps their record, but what they wear and have slotted is out of reach.
+    for (const id of away) absent[id] = characters[id];
+  } else {
+    // the older reading: everyone listed, the first four fielded
+    const list = [];
+    for (let k = 0; k < 16; k++) {
+      const cid = b.readUInt16LE(PARTY_AT + 4 + k * 2);
+      if (cid === 0xffff) break;
+      if (idOf.has(cid) && list.indexOf(idOf.get(cid)) === -1) list.push(idOf.get(cid));
+    }
+    party = list.slice(0, 4); reserve = list.slice(4);
+  }
+  // Records exist for people who are not with you right now. Leave them out, so nothing
+  // downstream can show a character before the story does.
+  for (const id of Object.keys(characters)) if (party.indexOf(id) === -1 && reserve.indexOf(id) === -1) delete characters[id];
+
+  return { chapter, party, reserve, characters, absent, partyState, bag, story, objective };
 }
 
-module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, loadTable, loadItemNames, loadGame, loadShop, loadObjectives, newestSave, readSaveFile };
+module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, MEMBER, PARTY_AT, PARTY_SIZE, PARTY_SLOTS, REC_FIRST, REC_SIZE, STATS_BACK, FLAGS_AT, CHAPTER_AT, loadTable, loadItemNames, loadGame, loadShop, loadObjectives, newestSave, readSaveFile };
 
 // ---- command line ------------------------------------------------------------
 function main() {
@@ -351,7 +402,10 @@ function main() {
   const json = args.includes('--json');
   const fileArg = args.find((a) => !a.startsWith('--'));
   const src = fileArg ? { f: fileArg, t: fs.statSync(fileArg).mtimeMs, slot: path.basename(path.dirname(fileArg)) } : newestSave();
-  const data = readSaveFile(src.f, loadGame());
+  const game = loadGame();
+  // the event scripts say which of the save's parties is in use; without them it is the usual one
+  try { game.partyScripts = require('./party-log.js').loadPartyScripts(game); } catch (e) { /* the usual one, then */ }
+  const data = readSaveFile(src.f, game);
   data.save = { slot: src.slot, written: new Date(src.t).toISOString() };
 
   if (json) { console.log(JSON.stringify(data, null, 1)); return; }
@@ -360,7 +414,10 @@ function main() {
   console.log('Chapter: ' + (data.chapter ? data.chapter.title : 'not recognised'));
   if (data.objective) console.log('Objective: ' + data.objective.text);
   const nameOf = (id) => data.characters[id].name;
-  console.log('Party: ' + data.party.map(nameOf).join(', ') + (data.reserve.length ? '   Reserve: ' + data.reserve.map(nameOf).join(', ') : '') + '\n');
+  console.log('Party: ' + data.party.map(nameOf).join(', ') + (data.reserve.length ? '   Reserve: ' + data.reserve.map(nameOf).join(', ') : ''));
+  const ps = data.partyState;
+  console.log(ps ? 'Locked in by the game: ' + (ps.fixed.map(nameOf).join(', ') || 'nobody') + (ps.away.length ? '   Away: ' + ps.away.map((id) => data.absent[id].name).join(', ') : '') + '\n'
+    : 'Party flags not recognised: locks unknown\n');
   for (const c of Object.values(data.characters)) {
     console.log(c.name + '  (Lv ' + c.level + ', HP ' + c.now.hp + '/' + c.hp + ', EP ' + c.now.ep + '/' + c.ep + ', CP ' + c.now.cp + '/' + c.now.cpMax + ')');
     for (const k of ['t', 'ul', 'ur', 'c', 'll', 'lr', 'b']) {

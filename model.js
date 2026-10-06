@@ -98,12 +98,26 @@
   }
   // the slot level a quartz needs, and what a workshop asks to synthesize it, if it does now
   function quartzLevel(name) { var g = G.quartz[name]; return (g && g[4]) || 1; }
-  function synthCost(name) { var g = G.quartz[name]; return g && g[5] && isOpen(g[6]) ? g[5] : null; }
+  function synthCost(name) {
+    var g = G.quartz[name];
+    if (!g || !g[5]) return null;
+    if (isOpen(g[6])) return g[5];
+    // not on the workshops' common list: one of this chapter's own shops may still make it
+    var own = CH && CH.synth && CH.synth[name];
+    return own && reached(own.from) ? g[5] : null;
+  }
+  // where it is synthesized: any workshop, or the one shop that makes it
+  function synthWhere(name) {
+    var g = G.quartz[name], own = CH && CH.synth && CH.synth[name];
+    return own && !(g && isOpen(g[6])) ? own.where : 'a workshop';
+  }
   function mira(n) { return String(n).replace(/\B(?=(\d{3})+$)/g, ',') + ' mira'; }
   function chestText(name) {
     var src = CH && CH.gearSrc && CH.gearSrc[name];
     return src ? 'chest, ' + src.where + (src.tag ? ' (' + src.tag + ')' : '') : '';
   }
+  // where a piece is sold: any weapon shop, or the one shop that stocks it
+  function shopOf(name) { var g = gear(name); return g && g.at ? g.at : 'a weapon shop'; }
   // how to get the piece a plan entry names, in a few words
   function gearHow(e) {
     var t = '';
@@ -114,8 +128,8 @@
         : e.baseWhere === 'worn' ? 'the ' + e.base + ' worn now'
           : e.baseWhere === 'in your bag' ? 'the ' + e.base + ' in your bag' : 'the ' + e.base + ' (' + e.baseWhere + ')';
       t = 'upgrade ' + base + ' at an orbal factory · ' + matsText(e.mats);
-    } else if (e.how === 'buy') t = 'buy it at a weapon shop · ' + mira(e.price);
-    else if (e.how === 'buycraft') t = 'buy ' + e.base + ' (' + mira(e.price) + '), then upgrade it at an orbal factory · ' + matsText(e.mats);
+    } else if (e.how === 'buy') t = 'buy it at ' + shopOf(e.name) + ' · ' + mira(e.price);
+    else if (e.how === 'buycraft') t = 'buy ' + e.base + (gear(e.base) && gear(e.base).at ? ' at ' + gear(e.base).at : '') + ' (' + mira(e.price) + '), then upgrade it at an orbal factory · ' + matsText(e.mats);
     if (e.make) t += ' (' + e.make.map(function (x) { return x[0] + ' ×' + x[1] + ' is made from ' + x[2] + ' ×' + x[3]; }).join('; ') + ')';
     if (e.short) t += ' — short by ' + matsText(e.short);
     return t;
@@ -335,17 +349,13 @@
     return null;
   }
 
-  // ---- what the game's scripts last did to the party, for where the save is ----
-  // The build replays the scripts' party changes event by event. The save says which of the
-  // chapter's events are over; the last of those in story order is the state that holds now.
-  // Dropped if it has someone you are fielding as away: then the replay does not fit this save.
-  function partyNow(party) {
-    if (!live || !live.events || !CH.partyLog) return null;
-    var cur = null;
-    CH.partyLog.forEach(function (e) { if (live.events.indexOf(e.flag) !== -1) cur = e; });
-    if (!cur || !cur.here.length) return null;
-    var fits = party.every(function (id) { return cur.here.indexOf(id) !== -1 && cur.away.indexOf(id) === -1; });
-    return fits ? cur : null;
+  // ---- who the game itself has locked in, or holds back, right now ----
+  // The save keeps a flag per party member: locked into the active party (the padlock in the
+  // party menu) or with you in name only. The live server reads them; an older one does not,
+  // and then the notes' word for it stands.
+  function partyNow() {
+    var P = live && live.partyState;
+    return P && P.here && P.here.length ? P : null;
   }
 
   // ---- the lineup the notes suggest for where the save is ----
@@ -356,7 +366,7 @@
     if (!CH || !CH.party || !CH.party.lineup) return null;
     var st = stageNow();
     var L = (st && st.lineup) || CH.party.lineup;
-    var out = { stage: st && st.lineup ? st.title : '', set: L.set, note: L.note, pick: [], fixed: [], why: {}, bench: [], swaps: [], same: true };
+    var out = { stage: st && st.lineup ? st.title : '', set: L.set, note: L.note, pick: [], fixed: [], why: {}, bench: [], swaps: [], room: [], same: true };
     L.rank.forEach(function (r) { out.why[r.id] = r.why; });
     if (!live) {
       // no save: the chapter's four, as the notes give them
@@ -365,18 +375,25 @@
       return out;
     }
     var party = live.party.slice(), roster = party.concat(live.reserve);
-    // Who is locked in and who is away comes from the game's own scripts when the save says
-    // which story events are over; the notes' word for it is the fallback.
-    var P = partyNow(party);
+    // Who is locked in and who is away comes from the save itself; the notes' word for it is
+    // the fallback.
+    var P = partyNow();
     out.source = P ? 'game' : 'notes';
-    var fixedIds = P ? P.fixed.concat(L.fixed.filter(function (id) { return P.fixed.indexOf(id) === -1 && L.rank.every(function (r) { return r.id !== id; }); })) : L.fixed;
-    var isAway = function (id) { return P ? P.here.indexOf(id) === -1 || P.away.indexOf(id) !== -1 : L.away.indexOf(id) !== -1; };
-    var here = function (id) { return roster.indexOf(id) !== -1 && !isAway(id); };
-    // nobody to choose between: the game has set the lineup
+    var awayIds = P ? P.away : L.away;
+    var here = function (id) { return roster.indexOf(id) !== -1 && awayIds.indexOf(id) === -1; };
+    // The notes know a stretch where the game fields who it wants; and with nobody on the
+    // bench who could come in, there is nothing to choose either.
     if (L.set || (P && roster.filter(here).length <= party.length)) { out.set = true; out.pick = party; out.fixed = party.slice(); return out; }
     var inParty = function (id) { return party.indexOf(id) !== -1; };
-    var pick = fixedIds.filter(here).slice(0, party.length);
-    out.fixed = pick.slice();
+    var locked = (P ? P.fixed : L.fixed).filter(here);
+    // Someone the notes build the four around and so never rank (Estelle, mostly) is not
+    // weighed against the others: fielded, they stay, even when the game has not locked them.
+    var kept = !P ? [] : L.fixed.filter(function (id) {
+      return locked.indexOf(id) === -1 && inParty(id) && here(id) && L.rank.every(function (r) { return r.id !== id; });
+    });
+    kept.forEach(function (id) { out.why[id] = out.why[id] || 'The notes build the four around this member.'; });
+    var pick = locked.concat(kept).slice(0, party.length);
+    out.fixed = locked.filter(function (id) { return pick.indexOf(id) !== -1; });
     var ranked = L.rank.filter(function (r) { return here(r.id) && pick.indexOf(r.id) === -1; }).map(function (r, i) { return { id: r.id, tier: r.tier, i: i }; });
     ranked.sort(function (a, b) { return a.tier - b.tier || (inParty(b.id) - inParty(a.id)) || a.i - b.i; });
     ranked.forEach(function (r) { if (pick.length < party.length) pick.push(r.id); });
@@ -384,10 +401,17 @@
     var fill = function (ids) { ids.forEach(function (id) { if (pick.length < party.length && pick.indexOf(id) === -1) pick.push(id); }); };
     fill(party.filter(here)); fill(live.reserve.filter(here)); fill(party);
     out.pick = pick;
-    out.bench = roster.filter(function (id) { return pick.indexOf(id) === -1; }).map(function (id) { return { id: id, away: L.away.indexOf(id) !== -1 }; });
+    out.bench = roster.filter(function (id) { return pick.indexOf(id) === -1; }).map(function (id) { return { id: id, away: awayIds.indexOf(id) !== -1 }; })
+      .concat(awayIds.filter(function (id) { return roster.indexOf(id) === -1 && P; }).map(function (id) { return { id: id, away: true }; }));
     var leave = party.filter(function (id) { return pick.indexOf(id) === -1; });
     out.swaps = pick.filter(function (id) { return !inParty(id); }).map(function (id, i) { return { 'in': id, out: leave[i] || null, why: out.why[id] || '' }; });
     out.same = !out.swaps.length;
+    // Fewer than four fielded with people on the bench: either the game holds the party small
+    // here, or there is room. The save cannot tell which, so this is offered, not asked for.
+    if (P && party.length < 4) {
+      var spare = ranked.map(function (r) { return r.id; }).concat(live.reserve.filter(here)).filter(function (id, i, a) { return pick.indexOf(id) === -1 && a.indexOf(id) === i; });
+      out.room = spare.slice(0, 4 - party.length);
+    }
     return out;
   }
 
@@ -430,6 +454,15 @@
       });
     }
     m.owned = avail ? JSON.parse(JSON.stringify(avail)) : null;
+    // Quartz on someone who is away for now: out of reach, so not counted above, but worth
+    // knowing about before sepith is spent on a second copy.
+    m.awayHolds = {};
+    if (live && live.absent) {
+      Object.keys(live.absent).forEach(function (id) {
+        var lc = live.absent[id];
+        ORDER.forEach(function (k) { var n = lc.slots[k]; if (n && !m.awayHolds[n]) m.awayHolds[n] = lc.name; });
+      });
+    }
 
     // Every slot of every character you have, active party first, in the order the chapter
     // lists its characters. That order is who gets a scarce quartz first.
@@ -571,7 +604,9 @@
       });
     });
     // the same, as one line to take to the workshop
-    var makes = Object.keys(m.workshop.make).map(function (n) { return n + (m.workshop.make[n] > 1 ? ' ×' + m.workshop.make[n] : ''); });
+    var makes = Object.keys(m.workshop.make).map(function (n) {
+      return n + (m.workshop.make[n] > 1 ? ' ×' + m.workshop.make[n] : '') + (synthWhere(n) === 'a workshop' ? '' : ' (' + synthWhere(n) + ')');
+    });
     var raises = m.workshop.raise.map(function (r) { return buildOf(r.id).name + '’s ' + POS_NAME[r.k].toLowerCase() + ' slot to level ' + r.to; });
     m.workshop.text = [makes.length ? 'Synthesize ' + makes.join(', ') + '.' : '', raises.length ? 'Raise ' + raises.join(', ') + '.' : ''].filter(Boolean).join(' ');
     var used = ELS.map(function (e, i) { return (have[e] || 0) - pool[i]; });
@@ -609,6 +644,7 @@
           : 'take it from ' + x.who + '’s ' + POS_NAME[x.slot].toLowerCase() + ' slot';
       }
       var src = CH.sources[name];
+      if (m.awayHolds[name]) return 'none spare — ' + m.awayHolds[name] + ' has one, and is away for now';
       return 'none spare' + (src ? ' — ' + src.where : ' — synthesize or buy one');
     }
     var wornBy = {}; // accessory name -> bench characters wearing it
@@ -631,7 +667,7 @@
             note: a.raise.name + ' needs a level ' + a.raise.to + ' slot' });
         }
         if (has === a.name) return;
-        var where = !isActive(b.id) ? '' : a.make ? 'synthesize it at a workshop · ' + sepithText(a.make) : source(a.name, b.id);
+        var where = !isActive(b.id) ? '' : a.make ? 'synthesize it at ' + synthWhere(a.name) + ' · ' + sepithText(a.make) + (m.awayHolds[a.name] ? ' (' + m.awayHolds[a.name] + ' has one, but is away for now)' : '') : source(a.name, b.id);
         list.push({ id: b.id, who: b.name, kind: 'slot', pos: POS_NAME[k], from: has || 'empty', to: a.name, where: where });
       });
       GEAR_SLOTS.forEach(function (sl) {
@@ -660,7 +696,7 @@
     use: use, compute: compute, buildOf: buildOf, haveKey: haveKey, stageNow: stageNow, lineupNow: lineupNow,
     quartz: quartz, lineValues: lineValues, artsFor: artsFor,
     gear: gear, gearScore: gearScore, gearStats: gearStats, gearGain: gearGain, gearHow: gearHow,
-    reached: reached, isOpen: isOpen, matsText: matsText, sepithText: sepithText, quartzLevel: quartzLevel, synthCost: synthCost, mira: mira, chestText: chestText,
+    reached: reached, isOpen: isOpen, matsText: matsText, sepithText: sepithText, quartzLevel: quartzLevel, synthCost: synthCost, synthWhere: synthWhere, mira: mira, chestText: chestText,
     ELS: ELS, ORDER: ORDER, POS_NAME: POS_NAME, GEAR_SLOTS: GEAR_SLOTS, GEAR_KIND: GEAR_KIND
   };
 });

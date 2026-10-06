@@ -19,7 +19,6 @@
 const fs = require('fs');
 const path = require('path');
 const { loadGame, loadTable, loadShop, ELEMENTS, SLOT_ORDER, CHAPTER_FLAG } = require('./read-save.js');
-const { loadPartyLog } = require('./party-log.js');
 
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'chapters-src');
@@ -50,8 +49,6 @@ if (args.includes('--unseal')) {
 
 // ---- game data ---------------------------------------------------------------
 const game = loadGame();
-// who the game's own scripts put in the party, and lock there, after each story event
-const partyLog = loadPartyLog(game);
 const idByName = new Map();
 for (const [id, name] of game.items) if (!idByName.has(name)) idByName.set(name, id);
 const cidById = new Map();
@@ -165,6 +162,18 @@ function shopWindow(list, id) {
   if (!r || (r.from.length && !gate(r.from))) return null; // not listed, or opened by something other than the story
   return [gate(r.from), gate(r.until)];
 }
+// A few pieces are on no common list, only on one shop's own, from a point in the story on.
+// Only ordinary shops count: the medal exchange does not take mira, and the special ones want
+// something rarer. Stock a shop has had since it opened says nothing about when you get there,
+// so only rows that open on a story flag are taken.
+function ownShopWindow(id) {
+  for (const r of shop.own) {
+    const s = shop.shops.get(r.list);
+    if (r.item !== id || !s || s.type > 3 || !gate(r.from)) continue;
+    return { win: [gate(r.from), gate(r.until)], where: s.name };
+  }
+  return null;
+}
 function recipeOf(id) {
   const r = shop.recipes.get(id);
   if (!r || r.count !== 1 || !game.items.get(r.base)) return null;
@@ -231,8 +240,10 @@ for (const [id, name] of game.items) {
   // armour and footwear from chests are cut for men or for women: an M or an F among the item's flags
   const cut = /[MF]/.exec(itemTable.str(b.readUInt32LE(o + 0x20)));
   if (cut && k !== 'w') g.sex = cut[0].toLowerCase();
-  const sell = shopWindow(k === 'w' ? 1006 : 1007, id), up = shopWindow(1002, id), from = recipeOf(id);
+  const own = ownShopWindow(id);
+  const sell = shopWindow(k === 'w' ? 1006 : 1007, id) || (own && own.win), up = shopWindow(1002, id), from = recipeOf(id);
   if (sell) g.sell = sell;
+  if (sell && own && sell === own.win) g.at = own.where; // sold at this one shop only
   if (up && from) { g.up = up; g.from = from; }
   if (chestsOf.has(id)) { g.n = chestsOf.get(id).length; gearChests[name] = chestsOf.get(id)[0]; }
   allGear[name] = g;
@@ -345,6 +356,19 @@ function buildChapter(src) {
   const party = Object.assign({}, src.party || {});
   party.lineup = lineupOf(party.lineup, 'ch' + src.n) ||
     { set: false, fixed: [], away: [], note: '', rank: (party.pick || []).map((id, k) => ({ id, why: '', tier: k })) };
+  // Shops that synthesize quartz of their own (the notes name them and say from which objective
+  // each can be used): quartz -> { where, from }. Their stock is read from the shop table.
+  const synth = {};
+  for (const st of src.stations || []) {
+    const where = 'ch' + src.n + ' station ' + st.name;
+    const rows = shop.own.filter((r) => r.list === st.list && quartzMake.has(r.item) && quartzMake.get(r.item).cost && !r.from.length);
+    if (!rows.length) problems.push(where + ': shop ' + st.list + ' synthesizes no quartz in the game table');
+    const from = flagOf(st.from, where);
+    for (const r of rows) synth[game.items.get(r.item)] = { where: st.name, from };
+    for (const name of Object.keys(src.sources || {})) {
+      if (src.sources[name].where.indexOf(st.name) === 0 && !synth[name]) problems.push(where + ': the notes send you here for ' + name + ', but the game table does not list it at this shop');
+    }
+  }
   const stages = (src.stages || []).map((s, i) => {
     const where = 'ch' + src.n + ' stage ' + (i + 1);
     if (s.from == null || !s.title) problems.push(where + ': needs a title and a from');
@@ -362,9 +386,9 @@ function buildChapter(src) {
   return {
     n: src.n, title: src.title, region: src.region || '', intro: src.intro || [],
     party, sources: src.sources || {}, quartz, characters,
-    gearOrder: src.gearOrder || [], gearSrc, stages,
-    partyLog: partyLog.get(src.n) || [],
-    // the objective from which workshops raise slots to level 3 (one chapter only names it)
+    gearOrder: src.gearOrder || [], gearSrc, stages, synth,
+    // the objective from which workshops raise slots to level 3 (one chapter only names it; no
+    // table of the game's says when, so this one comes from the guides)
     slot3From: src.slot3From ? flagOf(src.slot3From, 'ch' + src.n + ' slot3From') : null,
     sections: src.sections || [], source: src
   };

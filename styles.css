@@ -740,6 +740,7 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .lineup details { margin-top: 10px; }
 .lineup > .quiet { margin: 10px 0 0; }
 .lineup > .lineup-src { font-size: 0.84rem; }
+.lineup > .lineup-room { margin-top: 8px; }
 a.helpbar.is-lineup { display: block; text-decoration: none; }
 a.helpbar.is-lineup:hover, a.helpbar.is-lineup:focus-visible { filter: brightness(1.15); }
 .manual { margin-top: 16px; padding-top: 12px; border-top: 1px solid #d5dbe0; }

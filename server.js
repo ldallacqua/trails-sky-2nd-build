@@ -30,6 +30,7 @@ const vm = require('vm');
 const { exec } = require('child_process');
 const model = require('./model.js');
 const { loadGame, newestSave, readSaveFile, SAVE_DIR } = require('./tools/read-save.js');
+const { loadPartyScripts } = require('./tools/party-log.js');
 const { ensureAssets, ASSET_DIR, UI_FILES } = require('./tools/extract-assets.js');
 
 const args = process.argv.slice(2);
@@ -46,6 +47,11 @@ const NO_ASSETS = args.includes('--no-assets');
 
 let game;
 try { game = loadGame(); } catch (e) { console.error('Could not read the game tables: ' + e.message); process.exit(1); }
+// The save holds more than one party list; the game's event scripts say which one is in play.
+// Without them the reader shows the usual one.
+try { game.partyScripts = loadPartyScripts(game); } catch (e) { console.log('Event scripts not read (' + e.message + '): the usual party is shown.'); }
+// The page checks this against its own version, to say when this window predates an update.
+const BUILD = (/version:\s*'([^']+)'/.exec(fs.readFileSync(path.join(__dirname, 'data.js'), 'utf8')) || [])[1] || '';
 
 let current = null;      // last good read
 let currentKey = '';     // slot + mtime + size of the save that produced it
@@ -63,6 +69,7 @@ function tick() {
     const data = readSaveFile(newest.f, game); // throws if the game is mid-write; retried next tick
     data.save = { slot: newest.slot, written: new Date(newest.t).toISOString() };
     data.interval = INTERVAL;
+    data.build = BUILD;
     // art for the people in this save; null when the game's files cannot be read
     data.assets = NO_ASSETS ? null : ensureAssets(Object.values(data.characters).map((c) => ({ id: c.id, model: c.model })));
     current = data;
@@ -107,7 +114,8 @@ function overlay() {
       return {};
     };
     const inParty = (e) => m.active.indexOf(e.id) !== -1;
-    out.notes = true;
+    // with nobody of the party fielded there is nothing to show
+    out.notes = m.active.length > 0;
     out.steps = m.todo.map((t) => ({
       id: t.id, who: t.who, pos: t.pos, from: t.from, to: t.to, where: t.where || '', gain: t.note || '',
       fromIcon: icon(t.from), toIcon: icon(t.to)

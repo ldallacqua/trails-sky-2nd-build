@@ -975,7 +975,7 @@
   function renderOverview(m) {
     var host = byId('overview');
     host.textContent = '';
-    var nameOf = function (id) { var b = buildOf(id); return b ? b.name : (live && live.characters[id] ? live.characters[id].name : id); };
+    var nameOf = function (id) { var b = buildOf(id), lc = live && (live.characters[id] || (live.absent && live.absent[id])); return b ? b.name : (lc ? lc.name : id); };
     var left = m.rows.filter(function (r) { return !r.done; }).length;
     var tiles = el('div', 'tiles');
     add(tiles,
@@ -1052,6 +1052,11 @@
     });
     box.appendChild(ul);
     if (!L.same) box.appendChild(el('p', 'lineup-swap', lineupSwapText(L, nameOf) + ' The steps below follow the four you field, so they change once the game saves with the new lineup.'));
+    // fewer than four fielded: who would come next, if the game allows more here
+    if (L.room && L.room.length) {
+      box.appendChild(el('p', 'quiet lineup-room', 'You are fielding ' + L.pick.length + '. If the party menu lets you add more here, ' +
+        L.room.map(nameOf).join(', ').replace(/, ([^,]*)$/, ' and $1') + ' would come next.'));
+    }
     var bench = L.bench.filter(function (e) { return e.away || L.why[e.id]; });
     if (bench.length) {
       var d = details('lineup-bench', document.createTextNode('Why not the others'));
@@ -1065,7 +1070,7 @@
     if (L.note) box.appendChild(rich('p', 'quiet', L.note));
     // how far to trust who is marked as locked
     if (live && !L.set) box.appendChild(el('p', 'quiet lineup-src', L.source === 'game'
-      ? 'Who is locked in and who is away is read from the game’s own event scripts, for the events your save has passed.'
+      ? 'Who is locked in and who is away is read from your save: the same flags the party menu’s padlocks show.'
       : 'Who is locked in comes from the notes here, not from the game. The party menu’s padlocks are the last word.'));
     return box;
   }
@@ -1103,19 +1108,23 @@
       host.appendChild(el('p', 'quiet', 'Tick what you own in the upgrade list below. The diagrams switch each slot to its upgrade as you tick, and show what to slot in the meantime.'));
       return;
     }
-    if (m.gearStale) host.appendChild(el('p', 'helpbar is-warn', 'Weapon, armour and footwear advice needs the newer live server. Close the start-live.cmd window and run it again.'));
-    // a live server started before v24 does not say which objective the save is at
-    else if (!('objective' in live)) host.appendChild(el('p', 'helpbar is-warn', 'To follow where in the chapter you are, the page needs the newer live server. Close the start-live.cmd window and run it again.'));
+    // The live server window was started before the page was last updated: what it sends may
+    // lack things the page now goes by (locks, sepith, the objective).
+    if (live.build !== B.version) host.appendChild(el('p', 'helpbar is-warn', 'The live server window is older than this page, so some advice is missing or out of date. Close the start-live.cmd window and run it again.'));
+    // a stretch where the game has you play someone who is not in your party
+    if (!m.active.length) {
+      byId('now-count').textContent = '';
+      host.appendChild(el('p', 'quiet', 'Nobody from your party is fielded in this save: the game has you playing someone else for now. There is nothing to set up until they are back.'));
+      return;
+    }
     if (m.stage && m.stage.note) host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', m.stage.title + ' · '), document.createTextNode(m.stage.note)));
-    // a live server started before v26 does not report sepith or slot levels
-    if (m.sepithStale && !m.gearStale && ('objective' in live)) host.appendChild(el('p', 'helpbar is-warn', 'To say what you can synthesize and which slots to raise, the page needs the newer live server. Close the start-live.cmd window and run it again.'));
     // everything the sepith in the bag pays for, as one line to take to the workshop
     if (m.workshop && m.workshop.text) {
       host.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', 'At a workshop · '), document.createTextNode(m.workshop.text)));
     }
     // the four in the save are not the four the notes would field here
     if (m.lineup && !m.lineup.same) {
-      var nameOf = function (id) { var b = buildOf(id); return b ? b.name : (live.characters[id] ? live.characters[id].name : id); };
+      var nameOf = function (id) { var b = buildOf(id), lc = live.characters[id] || (live.absent && live.absent[id]); return b ? b.name : (lc ? lc.name : id); };
       var why = m.lineup.swaps.map(function (s) { return s.why; }).filter(Boolean).join(' ');
       var bar = add(el('a', 'helpbar is-stage is-lineup'), el('strong', '', 'Lineup · '), document.createTextNode(lineupSwapText(m.lineup, nameOf) + (why ? ' ' + why : '')));
       bar.href = '#overview';
