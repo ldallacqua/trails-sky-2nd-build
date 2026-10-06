@@ -7,6 +7,9 @@
 //   node server.js --port 9000
 //   node server.js --no-assets  do not use the game's art; keep the drawn look
 //
+// start-overlay.cmd draws the page's next steps on top of the game. It asks this server for
+// them (/api/overlay), so the server works the plan out with the same code the page uses.
+//
 // How it stays cheap: every tick is one stat call per save slot. The save is only read and
 // unpacked when its timestamp or size changes, which is whenever the game writes a save.
 // The page is told about changes over a single kept-open connection, so it does not poll.
@@ -23,7 +26,9 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const { exec } = require('child_process');
+const model = require('./model.js');
 const { loadGame, newestSave, readSaveFile, SAVE_DIR } = require('./tools/read-save.js');
 const { ensureAssets, ASSET_DIR, UI_FILES } = require('./tools/extract-assets.js');
 
@@ -34,7 +39,7 @@ const INTERVAL = Math.max(1, opt('interval', 3));
 const ROOT = __dirname;
 const STATIC = {
   '/': 'index.html', '/index.html': 'index.html', '/styles.css': 'styles.css',
-  '/app.js': 'app.js', '/data.js': 'data.js', '/game-data.js': 'game-data.js'
+  '/app.js': 'app.js', '/model.js': 'model.js', '/data.js': 'data.js', '/game-data.js': 'game-data.js'
 };
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.dat': 'text/plain; charset=utf-8', '.png': 'image/png' };
 const NO_ASSETS = args.includes('--no-assets');
@@ -71,6 +76,52 @@ function tick() {
   }
 }
 
+// ---- the in-game overlay -----------------------------------------------------------
+// The steps the page lists under "Next steps", worked out here so the overlay needs no browser.
+// Recomputed only when the save, the chapter notes or the game data change.
+const SHEET_QUARTZ = 84;  // first quartz orb on the game's icon sheet, one per element
+let overlayKey = '', overlayBody = '';
+function mtime(file) { try { return fs.statSync(path.join(ROOT, file)).mtimeMs; } catch (e) { return 0; } }
+function overlay() {
+  if (!current) return JSON.stringify({ ok: false, problem: lastProblem || 'no save read yet' });
+  const n = current.chapter ? current.chapter.n : null;
+  const notes = path.join('chapters', 'ch' + n + '.dat');
+  const key = [currentKey, mtime(notes), mtime('game-data.js'), mtime('model.js')].join('|');
+  if (key === overlayKey) return overlayBody;
+  const out = {
+    ok: true, chapter: current.chapter ? current.chapter.title : '', saved: current.save.written,
+    art: !!(current.assets && current.assets.icons), faces: current.assets ? current.assets.faces : [],
+    notes: false, steps: [], waiting: 0, optional: 0
+  };
+  try {
+    const box = { window: {}, atob, TextDecoder, Uint8Array };
+    vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'game-data.js'), 'utf8'), box);
+    const G = box.window.GAME;
+    const CH = JSON.parse(Buffer.from(fs.readFileSync(path.join(ROOT, notes), 'utf8'), 'base64').toString('utf8'));
+    model.use({ G, CH, chapterN: n, live: current, have: {} });
+    const m = model.compute();
+    const icon = (name) => {
+      if (G.quartz[name]) return { cell: SHEET_QUARTZ + model.ELS.indexOf(G.quartz[name][0]), el: G.quartz[name][0] };
+      if (G.gear[name]) return { cell: G.gear[name].i == null ? null : G.gear[name].i };
+      if (G.accessories[name]) return { cell: G.accessories[name][2] == null ? null : G.accessories[name][2] };
+      return {};
+    };
+    const inParty = (e) => m.active.indexOf(e.id) !== -1;
+    out.notes = true;
+    out.steps = m.todo.map((t) => ({
+      id: t.id, who: t.who, pos: t.pos, from: t.from, to: t.to, where: t.where || '', gain: t.note || '',
+      fromIcon: icon(t.from), toIcon: icon(t.to)
+    }));
+    out.waiting = m.gearWait.filter(inParty).length;
+    out.optional = m.gearOptional.filter(inParty).length;
+  } catch (e) {
+    out.problem = n == null ? 'chapter not recognised' : 'no build notes for this chapter';
+  }
+  overlayKey = key;
+  overlayBody = JSON.stringify(out);
+  return overlayBody;
+}
+
 function serveFile(res, file) {
   fs.readFile(path.join(ROOT, file), (err, body) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
@@ -90,6 +141,11 @@ const server = http.createServer((req, res) => {
     if (!current) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: lastProblem || 'no save read yet' })); return; }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(current));
+    return;
+  }
+  if (url === '/api/overlay') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(overlay());
     return;
   }
   if (url === '/api/events') {

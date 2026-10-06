@@ -30,11 +30,12 @@ It updates a few seconds after the game saves. No reload, no buttons, nothing to
 - **Works out the Arts for you.** Each orbment's lines are traced the way the game does it, the elemental values are added up, and the page lists every Art that layout can cast, with EP cost.
 - **Plans with what you own.** A slot can name a target quartz and a stand-in. The page picks the best one you actually have and tells you what to swap when a better one turns up.
 - **Covers everything you equip.** Weapon, armour and footwear are ranked per character from the game's item, shop and chest tables: what shops sell at this point of the story, which chest holds what, and what an upgrade costs. The page gives each one-copy piece to whoever gains most, checks the cost against the materials in your bag, and sets aside upgrades that are not worth the U-Material.
+- **Shows up in the game.** An optional overlay draws the next steps in a corner of the game window, so you can follow them in the orbment and equip menus without looking away.
 - **Spoiler-safe.** Notes for every chapter are in the repo, sealed. The page and the server only open the chapter your save has reached.
 - **Checked against the game's own tables.** Slot layouts, element locks, quartz values and effects, accessory resistances and Art requirements are read from the game files, not typed by hand.
 - **Looks like the game.** Parchment and gears, banner titles, cream list windows with a red cursor, navy status cards, Bracer Notebook pages. All of it is drawn in CSS.
 - **A help window on everything.** Hover or tap a quartz, accessory, Art or item to see what it does and where yours is.
-- **Small.** About 4,000 lines of plain JavaScript, HTML and CSS. No framework, no packages, no build step for the page.
+- **Small.** About 5,000 lines of plain JavaScript, HTML, CSS and one PowerShell script. No framework, no packages, no build step for the page.
 
 ## Screenshots
 
@@ -81,6 +82,21 @@ node server.js --open
 That opens http://localhost:8733. On Windows you can also double-click `start-live.cmd`. There is nothing to install.
 
 If your game or saves are not in the default places, set `SKY2_GAME_DIR` and `SKY2_SAVE_DIR` first.
+
+## In-game overlay
+
+<p align="center">
+  <img src="docs/overlay.png" alt="The overlay: a dark panel titled Next Steps listing, per character, which quartz to move and which gear to upgrade" width="560">
+</p>
+
+With live mode running, double-click `start-overlay.cmd`. The page's next steps appear in a corner of the game and update when the game saves.
+
+- **It does not touch the game.** It is a separate window that stays above the game's. Nothing is injected, and no game file or memory is read or changed. Clicks and keys pass through it, and it never takes focus.
+- **It gets out of the way.** It only shows while the game is the window in front. `Ctrl+Alt+O` switches between the full list, a one-line badge and off; the tray icon has the same choices, the corner to sit in, and Exit. When there is nothing to change it says so for a few seconds and disappears.
+- **Nothing to install.** It is one PowerShell script using the window toolkit that ships with Windows. The launcher starts it with `-ExecutionPolicy Bypass`, which lets that one unsigned local script run for that one process and changes no setting.
+- **The game has to run borderless or windowed.** No ordinary window can draw over exclusive fullscreen.
+
+Options go after the file name: `start-overlay.cmd -Corner BottomLeft -Scale 1.2`. The picture above is the drawn look; with the game's art extracted, the overlay uses the game's icons and portraits like the page does.
 
 ## How live mode works
 
@@ -131,8 +147,10 @@ The decoder is in the repo and has no dependencies: `tools/texture.js` unpacks L
 
 | File | What it does |
 |---|---|
-| `index.html`, `styles.css`, `app.js` | The page. `app.js` works out what each slot should hold given what you own, compares that with the save, traces the orbment lines and computes the Arts. |
-| `server.js` | The local live server: watches the save folder, pushes changes to the page, gates chapters and character art. |
+| `index.html`, `styles.css`, `app.js` | The page. `app.js` draws it. |
+| `model.js` | The plan itself: what each slot and each piece of gear should be given what you own, the steps to get there, the orbment lines and the Arts. Shared by the page and the server. |
+| `server.js` | The local live server: watches the save folder, pushes changes to the page, gates chapters and character art, and works out the steps for the overlay. |
+| `tools/overlay.ps1`, `start-overlay.cmd` | The in-game overlay and its launcher. |
 | `tools/read-save.js` | Reads a save: chapter, party, slots, gear, bag. Also runs on its own. |
 | `tools/build.js` | Validates the chapter notes against the game's tables and writes `chapters/*.dat` and `game-data.js`. |
 | `tools/extract-assets.js`, `tools/texture.js` | Pull art out of the game's image archive and decode it. |
@@ -148,6 +166,7 @@ The decoder is in the repo and has no dependencies: `tools/texture.js` unpacks L
 | `node server.js --port 9000` | Use another port (default 8733). |
 | `node server.js --interval 10` | Check the save folder every 10 seconds (default 3). |
 | `node server.js --no-assets` | Do not use the game's art. |
+| `start-overlay.cmd` | Show the next steps over the game. Add `-Corner TopLeft`, `-Scale 1.2`, `-Opacity 0.8`, `-Mode Mini` or `-Always`. |
 | `node tools/read-save.js` | Print what the newest save contains. Add `--json` for JSON, or pass a save file. |
 | `node tools/build.js` | Rebuild `chapters/*.dat` and `game-data.js` from the notes. |
 | `node tools/build.js --unseal` | Recreate the readable notes in `chapters-src/` from the sealed files. **This is the spoiler switch.** |
@@ -165,7 +184,8 @@ After changing a note, run `node tools/build.js` and commit the regenerated file
 
 ## Limits
 
-- **Steam version on Windows.** The default paths, `start-live.cmd` and `--open` assume it. The server itself is plain Node and takes the two paths from environment variables.
+- **Steam version on Windows.** The default paths, `start-live.cmd` and `--open` assume it. The server itself is plain Node and takes the two paths from environment variables. The overlay is Windows only.
+- **Everything follows the save, not the screen.** The page and the overlay change when the game writes a save, not the moment you move a quartz in the menu.
 - **The save layout was found by inspection.** The reader checks the layout before trusting it and stops with an error if a game update moves things, rather than showing wrong data.
 - **The builds are one player's choices.** They were written for a single playthrough. The page follows any save, but the advice reflects that party and those priorities.
 
