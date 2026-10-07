@@ -344,13 +344,20 @@ function readSaveFile(file, game) {
 
   // Which tiers of shop stock are open: the gate flags that are set. Only trusted when the
   // flags agree with the chapter; otherwise left out, and the page goes by the chapter alone.
-  let story = null, objective = null;
+  let story = null, objective = null, ended = null;
   const flag = (f) => !!(b[FLAGS_AT + (f >> 3)] & (1 << (f & 7)));
   if (chapter && game.gates && flag(CHAPTER_FLAG + chapter.n * 1000) && !flag(CHAPTER_FLAG + (chapter.n + 1) * 1000)) {
     story = game.gates.filter(flag);
     // the objective the game is showing: only reported when exactly one row fits
     const at = (game.objectives || []).filter((o) => o.chapter === chapter.n && o.from.length && o.from.every(flag) && !o.until.some(flag));
     if (at.length === 1) objective = { text: at[0].text, from: at[0].from[0] };
+    // The last objective of a chapter ("Chapter 6 End") is where the game writes its
+    // chapter-clear save. The next save only comes once you are inside the next chapter, and
+    // that chapter can open with a party to pick: so the page is told the chapter is over,
+    // which chapter follows, and the story flag its first objective starts on.
+    const rows = (game.objectives || []).filter((o) => o.chapter === chapter.n && o.from.length);
+    const next = (game.objectives || []).filter((o) => o.chapter === chapter.n + 1 && o.from.length)[0];
+    if (objective && next && rows[rows.length - 1].from[0] === objective.from) ended = { next: chapter.n + 1, start: next.from[0] };
   }
 
   // ---- who is with you, who is fielded, and who the game will not let you move ----
@@ -391,7 +398,7 @@ function readSaveFile(file, game) {
   // downstream can show a character before the story does.
   for (const id of Object.keys(characters)) if (party.indexOf(id) === -1 && reserve.indexOf(id) === -1) delete characters[id];
 
-  return { chapter, party, reserve, characters, absent, partyState, bag, story, objective };
+  return { chapter, party, reserve, characters, absent, partyState, bag, story, objective, ended };
 }
 
 module.exports = { GAME_DIR, SAVE_DIR, SLOT_NAME, SLOT_ORDER, ELEMENTS, GEAR, CHAPTER_FLAG, MEMBER, PARTY_AT, PARTY_SIZE, PARTY_SLOTS, REC_FIRST, REC_SIZE, STATS_BACK, FLAGS_AT, CHAPTER_AT, loadTable, loadItemNames, loadGame, loadShop, loadObjectives, newestSave, readSaveFile };
@@ -413,6 +420,7 @@ function main() {
   console.log('Save: ' + src.slot + ', written ' + new Date(src.t).toLocaleString());
   console.log('Chapter: ' + (data.chapter ? data.chapter.title : 'not recognised'));
   if (data.objective) console.log('Objective: ' + data.objective.text);
+  if (data.ended) console.log('This save is at the end of its chapter; the game saves next inside Chapter ' + data.ended.next + '.');
   const nameOf = (id) => data.characters[id].name;
   console.log('Party: ' + data.party.map(nameOf).join(', ') + (data.reserve.length ? '   Reserve: ' + data.reserve.map(nameOf).join(', ') : ''));
   const ps = data.partyState;

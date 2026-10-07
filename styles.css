@@ -741,6 +741,11 @@ details.memo .notes { margin-top: 0; padding-bottom: 8px; }
 .lineup > .quiet { margin: 10px 0 0; }
 .lineup > .lineup-src { font-size: 0.84rem; }
 .lineup > .lineup-room { margin-top: 8px; }
+/* the slip shown when the save is from the end of a chapter */
+.ahead { margin: 0 0 18px; }
+.ahead .helpbar { margin-bottom: 10px; }
+.ahead-ask { margin: 0; text-align: center; }
+.ahead .lineup { margin: 14px 0 0; }
 a.helpbar.is-lineup { display: block; text-decoration: none; }
 a.helpbar.is-lineup:hover, a.helpbar.is-lineup:focus-visible { filter: brightness(1.15); }
 .manual { margin-top: 16px; padding-top: 12px; border-top: 1px solid #d5dbe0; }

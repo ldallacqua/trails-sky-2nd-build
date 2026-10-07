@@ -287,12 +287,13 @@
     [order.filter(isActive), order.filter(function (id) { return !isActive(id); })].forEach(function (group, pass) {
       var mayBuy = pass === 0 || !live;
       GEAR_SLOTS.forEach(function (sl) {
-        // every (character, piece) pair, best fit first; ties go to the earlier character
+        // every (character, piece) pair, best fit first; on a tie whoever already wears the piece
+        // keeps it, and only then the earlier character (or two people swap the same piece)
         var pairs = [];
         group.forEach(function (id, rank) {
           candidates(id, sl, live ? live.characters[id][sl.key] : null).forEach(function (p) { p.rank = rank; pairs.push(p); });
         });
-        pairs.sort(function (p, q) { return q.v - p.v || p.rank - q.rank || q.worn - p.worn || p.n.localeCompare(q.n); });
+        pairs.sort(function (p, q) { return q.v - p.v || q.worn - p.worn || p.rank - q.rank || p.n.localeCompare(q.n); });
         pairs.forEach(function (p) {
           var mine = m.gear[p.id];
           if (mine[sl.key] && mine[sl.key].name) return;
@@ -415,6 +416,12 @@
       var d = (a[5].s[k] || 0) - ((b && b[5].s[k]) || 0);
       return d ? signed(k, d) : '';
     }).filter(Boolean);
+    // effects that are not a stat: CP gain, CP per action, the one-off rescue from a KO
+    var fa = a[5].fx, fb = b ? b[5].fx : {};
+    if ((fa.cp || 0) !== (fb.cp || 0)) bits.push('CP gain ' + ((fa.cp || 0) > (fb.cp || 0) ? '+' : '−') + Math.abs((fa.cp || 0) - (fb.cp || 0)) + '%');
+    if ((fa.act || 0) !== (fb.act || 0)) bits.push('CP per action ' + ((fa.act || 0) > (fb.act || 0) ? '+' : '−') + Math.abs((fa.act || 0) - (fb.act || 0)));
+    if (fa.ko && !fb.ko) bits.push('survives one KO');
+    if (fb.ko && !fa.ko) bits.push('no rescue from a KO');
     var gains = Object.keys(a[1]).filter(function (st) { return a[1][st] > ((b && b[1][st]) || 0); });
     var loses = b ? Object.keys(b[1]).filter(function (st) { return b[1][st] > (a[1][st] || 0); }) : [];
     if (gains.length) bits.push('blocks ' + gains.join(', '));
@@ -495,6 +502,28 @@
       if (pick === -1) return 'in your bag';
       return 'take it from ' + holders.splice(pick, 1)[0].who;
     }
+    // What a recipe can be paid in: the materials left after the gear plan and, for the few
+    // recipes that take them, spare accessories in the bag.
+    function isSpare(n) { return !!G.accessories[n] && !(n in mats); }
+    function poolNow() {
+      var pool = JSON.parse(JSON.stringify(mats));
+      Object.keys(bag).forEach(function (n) { if (bag[n] > 0 && isSpare(n)) pool[n] = bag[n]; });
+      return pool;
+    }
+    // pays for a recipe, taking materials from the materials and accessories from the bag
+    function payFor(need) {
+      var pool = poolNow(), paid = payMats(pool, need);
+      if (paid.short.length) return paid;
+      var left = {};
+      Object.keys(paid.pool).forEach(function (n) {
+        if (!isSpare(n)) { left[n] = paid.pool[n]; return; }
+        var used = (pool[n] || 0) - paid.pool[n];
+        bag[n] -= used; free[n] -= used;
+      });
+      spent(m, mats, left);
+      mats = left;
+      return paid;
+    }
     // where a copy is, in the words claim() would use, without taking it
     function locate(name, id) {
       if (!live) return '';
@@ -558,18 +587,16 @@
       // told once, to whoever gets the most out of it: the same thing is not offered to all four
       if (r.how === 'buy' || r.how === 'buycraft') {
         if (offer[p.id] || told[p.n]) return;
-        if (r.mats && r.mats.length) { var need = payMats(mats, r.mats); if (need.short.length) r.short = need.short; }
+        if (r.mats && r.mats.length) { var need = payMats(poolNow(), r.mats); if (need.short.length) r.short = need.short; }
         offer[p.id] = r; told[p.n] = true;
         return;
       }
       if (r.short) r.baseWhere = locate(r.base, p.id);
       if (!r.short) {
-        var paid = payMats(mats, r.mats);
+        var paid = payFor(r.mats);
         if (paid.short.length) { r.short = paid.short; r.baseWhere = locate(r.base, p.id); }
         else {
           if (paid.make.length) r.make = paid.make;
-          spent(m, mats, paid.pool);
-          mats = paid.pool;
           for (var j = 0; j < r.count; j++) r.baseWhere = claim(r.base, p.id);
           mine.push(r);
           return;

@@ -1134,6 +1134,65 @@
     return box;
   }
 
+  // The save is from the very end of a chapter. The game is past it by now, but it does not
+  // save again until you are inside the next chapter, and that chapter can open by asking for
+  // a party. So the page says where it stands, and on request shows the next chapter's
+  // opening pick: only that, and only when asked.
+  var ahead = null; // { n, CH }: the next chapter's notes, once asked for
+  function aheadSlip() {
+    var n = live.ended.next;
+    var box = el('div', 'ahead');
+    box.appendChild(add(el('p', 'helpbar is-stage'), el('strong', '', live.chapter.title.replace(/:.*/, '') + ' is over in this save · '),
+      document.createTextNode('The game saves next once you are inside Chapter ' + n + ', and this page follows the save. It switches by itself as soon as that save is written.')));
+    if (!ahead || ahead.n !== n) {
+      var row = el('p', 'ahead-ask');
+      var btn = el('button', 'btn btn-strong', 'The game is asking me to pick a party: show the pick for Chapter ' + n);
+      btn.type = 'button';
+      btn.addEventListener('click', function () {
+        fetch('chapters/ch' + n + '.dat', { cache: 'no-store' })
+          .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+          .then(function (text) { ahead = { n: n, CH: unseal(text) }; render(); })
+          .catch(function () { row.textContent = 'The notes could not be loaded. Close the start-live.cmd window, run it again and reload this page.'; });
+      });
+      box.appendChild(add(row, btn));
+      return box;
+    }
+    var C = ahead.CH;
+    var st = C.stages.filter(function (s) { return s.from === live.ended.start; })[0];
+    var L = (st && st.lineup) || C.party.lineup;
+    var nameOf = function (id) { var b = C.characters.filter(function (c) { return c.id === id; })[0]; return b ? b.name : id; };
+    var block = el('div', 'lineup');
+    block.appendChild(add(el('p', 'lineup-head'), el('strong', '', 'Chapter ' + n + ' opens with')));
+    if (L.set) {
+      block.appendChild(el('p', 'quiet', 'The game fields the party itself here. There is nothing to choose yet.'));
+    } else {
+      var ranked = L.rank.filter(function (r) { return L.away.indexOf(r.id) === -1 && L.fixed.indexOf(r.id) === -1; });
+      var free = Math.max(0, 4 - L.fixed.length);
+      var ul = el('ul', 'lineup-list');
+      L.fixed.map(function (id) { return { id: id, fixed: true }; }).concat(ranked.slice(0, free)).forEach(function (r) {
+        var li = el('li', r.fixed ? 'is-fixed' : '');
+        li.appendChild(add(el('p', 'lineup-who'), avatar(r.id, nameOf(r.id), 'avatar-sm'), el('strong', '', nameOf(r.id)), el('span', 'tag ' + (r.fixed ? 'tag-fixed' : 'tag-pick'), r.fixed ? 'Fixed' : 'Pick')));
+        var why = r.fixed ? 'The notes have this member as required here. The padlock in the party menu is the last word.' : r.why;
+        if (why) li.appendChild(el('p', 'lineup-why', why));
+        ul.appendChild(li);
+      });
+      block.appendChild(ul);
+      var rest = ranked.slice(free).filter(function (r) { return r.why; });
+      if (rest.length) {
+        var d = details('ahead-bench', document.createTextNode('Why not the others'));
+        var bl = el('ul', 'notes');
+        rest.forEach(function (r) { bl.appendChild(add(el('li'), el('strong', '', nameOf(r.id) + ': '), document.createTextNode(r.why))); });
+        d.appendChild(bl);
+        block.appendChild(d);
+      }
+    }
+    if (L.note) block.appendChild(rich('p', 'quiet', L.note));
+    if (C.party.note) block.appendChild(rich('p', 'quiet', C.party.note));
+    block.appendChild(el('p', 'quiet lineup-src', 'From the notes for Chapter ' + n + ', not from your save. Everything below is still Chapter ' + (n - 1) + ' until the game saves.'));
+    box.appendChild(block);
+    return box;
+  }
+
   function renderNow(m) {
     var host = byId('now-body');
     host.textContent = '';
@@ -1146,6 +1205,7 @@
     // The live server window was started before the page was last updated: what it sends may
     // lack things the page now goes by (locks, sepith, the objective).
     if (live.build !== B.version) host.appendChild(el('p', 'helpbar is-warn', 'The live server window is older than this page, so some advice is missing or out of date. Close the start-live.cmd window and run it again.'));
+    if (live.ended && G.chapters.indexOf(live.ended.next) !== -1) host.appendChild(aheadSlip());
     // a stretch where the game has you play someone who is not in your party
     if (!m.active.length) {
       byId('now-count').textContent = '';

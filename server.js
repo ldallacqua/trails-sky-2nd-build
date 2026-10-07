@@ -123,6 +123,7 @@ function overlay() {
     out.waiting = m.gearWait.filter(inParty).length;
     out.optional = m.gearOptional.filter(inParty).length;
     if (m.stage) { out.stage = m.stage.title; out.note = m.stage.note; }
+    if (current.ended) { out.stage = 'Chapter over'; out.note = 'This save is from the end of the chapter. If the next one opens with a party to pick, the page has the pick.'; }
     // what to synthesize and which slots to raise, as one line
     if (m.workshop && m.workshop.text) out.workshop = m.workshop.text;
     // the four in the save against the four the notes would field here
@@ -175,8 +176,10 @@ const server = http.createServer((req, res) => {
   }
   const chapter = /^\/chapters\/ch(\d+)\.dat$/.exec(url);
   if (chapter) {
-    // Notes for a chapter the save has not reached are not handed out.
-    const reached = current && current.chapter ? current.chapter.n : -1;
+    // Notes for a chapter the save has not reached are not handed out. A save at the very end
+    // of a chapter counts as having reached the next: the game is in it by then, it just has
+    // not saved there yet. The page still only asks for those notes when told to.
+    const reached = current && current.chapter ? current.chapter.n + (current.ended ? 1 : 0) : -1;
     if (Number(chapter[1]) > reached) { res.writeHead(403); res.end('Not reached yet'); return; }
     serveFile(res, path.join('chapters', 'ch' + Number(chapter[1]) + '.dat'));
     return;
